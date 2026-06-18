@@ -16,7 +16,7 @@ A browser-based rater console for collecting power soccer match statistics while
 - Editable stat definitions with abbreviation, display name, definition, value type, color group, and active status.
 - Editable play library with offensive/defensive type, play name, play art link, and source link.
 - Unified event log with distinct visual treatments for stats, plays, set pieces, and notes.
-- Knowledge base for finished games, teams, players, divisions, prior stats, and heuristic quality scores.
+- Knowledge base for finished games, teams, players, divisions, prior stats, heuristic quality scores, and radar-style capability diagrams.
 
 ## Run locally
 
@@ -58,7 +58,7 @@ The **Knowledge base** view stores finished games locally and rolls them up into
 - home and away divisions, defaulting to `104`
 - score, event count, stat totals, and tagged possession
 
-Team and player detail views show all saved stats plus heuristic quality scores for attack, defense, possession, discipline, and overall performance. These scores are derived only from available tagged data, so they should be treated as directional review aids rather than official ratings.
+Team and player detail views show all saved stats plus heuristic quality scores for offensive capability, defensive capability, possession control, playstyle execution, discipline, and overall performance. A radar-style web diagram visualizes those dimensions. These scores are derived only from available tagged data, so they should be treated as directional review aids rather than official ratings.
 
 ## Editing stats and plays
 

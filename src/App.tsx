@@ -65,6 +65,7 @@ type RatingScores = {
   attack: number;
   defense: number;
   possession: number;
+  playstyle: number;
   discipline: number;
   overall: number;
 };
@@ -82,6 +83,7 @@ type TeamKnowledge = {
   possessionSeconds: number;
   contestedSeconds: number;
   stats: StatTotals;
+  playStyles: StatTotals;
   ratings: RatingScores;
   gameIds: string[];
   updatedAt: string;
@@ -111,6 +113,7 @@ type GameSnapshot = {
   homeScore: number;
   awayScore: number;
   teamStats: Record<TeamSide, StatTotals>;
+  teamPlayStyles: Record<TeamSide, StatTotals>;
   playerStats: Array<{
     playerId: string;
     playerName: string;
@@ -276,9 +279,33 @@ function normalizeId(value: string) {
 
 function normalizeKnowledgeBase(knowledgeBase?: KnowledgeBase) {
   return {
-    players: knowledgeBase?.players ?? [],
-    teams: knowledgeBase?.teams ?? [],
-    games: knowledgeBase?.games ?? [],
+    players:
+      knowledgeBase?.players.map((player) => ({
+        ...player,
+        ratings: normalizeRatings(player.ratings),
+      })) ?? [],
+    teams:
+      knowledgeBase?.teams.map((team) => ({
+        ...team,
+        playStyles: team.playStyles ?? {},
+        ratings: normalizeRatings(team.ratings),
+      })) ?? [],
+    games:
+      knowledgeBase?.games.map((game) => ({
+        ...game,
+        teamPlayStyles: game.teamPlayStyles ?? { home: {}, away: {} },
+      })) ?? [],
+  };
+}
+
+function normalizeRatings(ratings?: RatingScores) {
+  return {
+    attack: ratings?.attack ?? 0,
+    defense: ratings?.defense ?? 0,
+    possession: ratings?.possession ?? 0,
+    playstyle: ratings?.playstyle ?? 0,
+    discipline: ratings?.discipline ?? 0,
+    overall: ratings?.overall ?? 0,
   };
 }
 
@@ -287,6 +314,7 @@ function emptyRatings(): RatingScores {
     attack: 0,
     defense: 0,
     possession: 0,
+    playstyle: 0,
     discipline: 0,
     overall: 0,
   };
@@ -315,7 +343,15 @@ function clampScore(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function calculateRatings(stats: StatTotals, context?: { goalsAgainst?: number; possessionShare?: number }) {
+function calculateRatings(
+  stats: StatTotals,
+  context?: {
+    goalsAgainst?: number;
+    possessionShare?: number;
+    playStyleCount?: number;
+    playStyleDiversity?: number;
+  },
+) {
   const goals = stats.G ?? 0;
   const assists = stats.A ?? 0;
   const shots = stats.Sh ?? 0;
@@ -332,24 +368,38 @@ function calculateRatings(stats: StatTotals, context?: { goalsAgainst?: number; 
   const twoOnOnes = stats["2o1"] ?? stats["2on1"] ?? 0;
   const goalsAgainst = context?.goalsAgainst ?? 0;
   const possessionShare = context?.possessionShare ?? 0;
+  const playStyleCount = context?.playStyleCount ?? 0;
+  const playStyleDiversity = context?.playStyleDiversity ?? 0;
 
   const attack = clampScore(45 + goals * 10 + assists * 4 + shots * 2 + opportunities * 3 + positiveTransitions - wastedOpportunities * 3);
   const defense = clampScore(45 + saves * 5 + stops * 4 + wonPossession * 2 - errors * 6 - goalsAgainst * 8);
   const possession = clampScore(45 + possessionShare * 25 + wonPossession * 3 + positiveTransitions * 2 - lostPossession * 3 - negativeTransitions * 3);
+  const playstyle = clampScore(
+    45 +
+      Math.min(playStyleDiversity, 6) * 5 +
+      Math.min(playStyleCount, 12) * 1.5 +
+      opportunities * 2 +
+      positiveTransitions * 2 +
+      wonPossession -
+      wastedOpportunities * 2 -
+      negativeTransitions * 2,
+  );
   const discipline = clampScore(80 - fouls * 5 - twoOnOnes * 3);
 
   return {
     attack,
     defense,
     possession,
+    playstyle,
     discipline,
-    overall: clampScore(attack * 0.32 + defense * 0.3 + possession * 0.28 + discipline * 0.1),
+    overall: clampScore(attack * 0.28 + defense * 0.26 + possession * 0.22 + playstyle * 0.14 + discipline * 0.1),
   };
 }
 
 function buildGameSnapshot(match: MatchState) {
   const id = createEventId();
   const teamStats: Record<TeamSide, StatTotals> = { home: {}, away: {} };
+  const teamPlayStyles: Record<TeamSide, StatTotals> = { home: {}, away: {} };
   const playerStats = new Map<
     string,
     {
@@ -364,6 +414,11 @@ function buildGameSnapshot(match: MatchState) {
   >();
 
   for (const event of match.events) {
+    if (event.kind === "play" && event.playName) {
+      addToTotals(teamPlayStyles[event.team], `${event.playType ?? "play"}: ${event.playName}`, 1);
+      continue;
+    }
+
     if (event.kind !== "stat" || !event.statCode) {
       continue;
     }
@@ -409,6 +464,7 @@ function buildGameSnapshot(match: MatchState) {
     homeScore,
     awayScore,
     teamStats,
+    teamPlayStyles,
     playerStats: playerRows,
     possession,
     eventCount: match.events.length,
@@ -426,7 +482,17 @@ function mergeStats(base: StatTotals, addition: StatTotals) {
 function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
   const games = [game, ...knowledgeBase.games.filter((existing) => existing.id !== game.id)];
 
-  const teamsById = new Map(knowledgeBase.teams.map((team) => [team.id, { ...team, stats: { ...team.stats }, gameIds: [...team.gameIds] }]));
+  const teamsById = new Map(
+    knowledgeBase.teams.map((team) => [
+      team.id,
+      {
+        ...team,
+        stats: { ...team.stats },
+        playStyles: { ...(team.playStyles ?? {}) },
+        gameIds: [...team.gameIds],
+      },
+    ]),
+  );
   (["home", "away"] as TeamSide[]).forEach((side) => {
     const opponent = side === "home" ? "away" : "home";
     const name = side === "home" ? game.homeTeam : game.awayTeam;
@@ -449,6 +515,7 @@ function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
         possessionSeconds: 0,
         contestedSeconds: 0,
         stats: {},
+        playStyles: {},
         ratings: emptyRatings(),
         gameIds: [],
         updatedAt: game.finishedAt,
@@ -458,6 +525,9 @@ function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
     const contestedSeconds = previous.contestedSeconds + game.possession.contested;
     const possessionTotal = possessionSeconds + contestedSeconds + game.possession[opponent];
     const stats = mergeStats(previous.stats, game.teamStats[side]);
+    const playStyles = mergeStats(previous.playStyles ?? {}, game.teamPlayStyles[side] ?? {});
+    const playStyleCount = Object.values(playStyles).reduce((sum, value) => sum + value, 0);
+    const playStyleDiversity = Object.values(playStyles).filter((value) => value > 0).length;
     const wins = previous.wins + (goalsFor > goalsAgainst ? 1 : 0);
     const losses = previous.losses + (goalsFor < goalsAgainst ? 1 : 0);
     const ties = previous.ties + (goalsFor === goalsAgainst ? 1 : 0);
@@ -475,9 +545,12 @@ function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
       possessionSeconds,
       contestedSeconds,
       stats,
+      playStyles,
       ratings: calculateRatings(stats, {
         goalsAgainst: previous.goalsAgainst + goalsAgainst,
         possessionShare: possessionTotal > 0 ? possessionSeconds / possessionTotal : 0,
+        playStyleCount,
+        playStyleDiversity,
       }),
       gameIds: Array.from(new Set([game.id, ...previous.gameIds])),
       updatedAt: game.finishedAt,
@@ -2063,15 +2136,130 @@ function statLabel(code: string, statDefinitions: StatDefinition[]) {
   return statDefinitions.find((stat) => stat.code === code || stat.templateCode === code)?.label ?? code;
 }
 
+const RATING_DIMENSIONS: Array<{
+  key: keyof RatingScores;
+  label: string;
+  shortLabel: string;
+  description: string;
+}> = [
+  {
+    key: "attack",
+    label: "Offensive capability",
+    shortLabel: "Offense",
+    description: "Goals, assists, shots, opportunities, and positive transitions minus wasted chances.",
+  },
+  {
+    key: "defense",
+    label: "Defensive capability",
+    shortLabel: "Defense",
+    description: "Saves, defensive stops, possession wins, and goals prevented minus errors/goals against.",
+  },
+  {
+    key: "possession",
+    label: "Possession control",
+    shortLabel: "Poss.",
+    description: "Tagged possession share, possession wins, positive transitions, and avoiding lost/negative transitions.",
+  },
+  {
+    key: "playstyle",
+    label: "Playstyle execution",
+    shortLabel: "Style",
+    description: "Play-tag diversity and volume for teams, plus opportunity/transition patterns for all records.",
+  },
+  {
+    key: "discipline",
+    label: "Discipline",
+    shortLabel: "Disc.",
+    description: "Avoiding fouls and 2-on-1s.",
+  },
+];
+
+function ratingLabel(key: keyof RatingScores) {
+  if (key === "overall") {
+    return "Overall";
+  }
+  return RATING_DIMENSIONS.find((dimension) => dimension.key === key)?.label ?? key;
+}
+
 function RatingCards({ ratings }: { ratings: RatingScores }) {
   return (
     <div className="rating-grid">
-      {(["overall", "attack", "defense", "possession", "discipline"] as Array<keyof RatingScores>).map((key) => (
+      {(["overall", ...RATING_DIMENSIONS.map((dimension) => dimension.key)] as Array<keyof RatingScores>).map((key) => (
         <div className="rating-card" key={key}>
-          <span>{key}</span>
+          <span>{ratingLabel(key)}</span>
           <strong>{ratings[key]}</strong>
         </div>
       ))}
+    </div>
+  );
+}
+
+function RatingRadar({ ratings }: { ratings: RatingScores }) {
+  const center = 120;
+  const maxRadius = 88;
+  const axisPoints = RATING_DIMENSIONS.map((dimension, index) => {
+    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / RATING_DIMENSIONS.length;
+    const valueRadius = (ratings[dimension.key] / 100) * maxRadius;
+    return {
+      ...dimension,
+      axisX: center + Math.cos(angle) * maxRadius,
+      axisY: center + Math.sin(angle) * maxRadius,
+      valueX: center + Math.cos(angle) * valueRadius,
+      valueY: center + Math.sin(angle) * valueRadius,
+      labelX: center + Math.cos(angle) * (maxRadius + 24),
+      labelY: center + Math.sin(angle) * (maxRadius + 24),
+    };
+  });
+  const polygon = axisPoints.map((point) => `${point.valueX},${point.valueY}`).join(" ");
+
+  return (
+    <div className="radar-card">
+      <div>
+        <p className="section-kicker">Performance web</p>
+        <h3>Capability profile</h3>
+      </div>
+      <svg className="radar-chart" viewBox="0 0 240 240" role="img" aria-label="Performance radar chart">
+        {[0.25, 0.5, 0.75, 1].map((scale) => {
+          const ring = RATING_DIMENSIONS.map((_, index) => {
+            const angle = -Math.PI / 2 + (index * 2 * Math.PI) / RATING_DIMENSIONS.length;
+            return `${center + Math.cos(angle) * maxRadius * scale},${center + Math.sin(angle) * maxRadius * scale}`;
+          }).join(" ");
+          return <polygon className="radar-ring" points={ring} key={scale} />;
+        })}
+        {axisPoints.map((point) => (
+          <g key={point.key}>
+            <line className="radar-axis" x1={center} y1={center} x2={point.axisX} y2={point.axisY} />
+            <text className="radar-label" x={point.labelX} y={point.labelY}>
+              {point.shortLabel}
+            </text>
+          </g>
+        ))}
+        <polygon className="radar-area" points={polygon} />
+        {axisPoints.map((point) => (
+          <circle className="radar-point" cx={point.valueX} cy={point.valueY} r="4" key={point.key} />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+function RatingBreakdown({ isTeam }: { isTeam: boolean }) {
+  return (
+    <div className="rating-breakdown">
+      <p className="section-kicker">How scores are calculated</p>
+      <div className="definition-list compact">
+        {RATING_DIMENSIONS.map((dimension) => (
+          <div key={dimension.key}>
+            <strong>{dimension.label}</strong>
+            <span>
+              {dimension.description}
+              {dimension.key === "playstyle" && isTeam
+                ? " Team records also use tagged play diversity and frequency."
+                : ""}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2129,7 +2317,7 @@ function KnowledgeBasePage({ knowledgeBase, statDefinitions }: KnowledgeBasePage
             <p className="muted">
               Finish a rating session from the tracker to snapshot the game into this local history.
               Team and player quality scores are heuristic summaries from available goals, stat
-              counts, negative events, discipline, and possession.
+              counts, negative events, discipline, possession, and tagged playstyle patterns.
             </p>
           </div>
           <div className="action-row">
@@ -2206,7 +2394,13 @@ function KnowledgeBasePage({ knowledgeBase, statDefinitions }: KnowledgeBasePage
                   {selectedRecord.divisions.join(", ") || "unknown"} / {selectedRecord.gamesPlayed} games
                 </p>
               )}
-              <RatingCards ratings={selectedRecord.ratings} />
+              <div className="performance-layout">
+                <RatingRadar ratings={selectedRecord.ratings} />
+                <div>
+                  <RatingCards ratings={selectedRecord.ratings} />
+                  <RatingBreakdown isTeam={"division" in selectedRecord} />
+                </div>
+              </div>
               {"goalsFor" in selectedRecord ? (
                 <div className="knowledge-summary-grid">
                   <div className="mini-card">
@@ -2222,6 +2416,12 @@ function KnowledgeBasePage({ knowledgeBase, statDefinitions }: KnowledgeBasePage
                     <span>Tagged possession</span>
                   </div>
                 </div>
+              ) : null}
+              {"playStyles" in selectedRecord && Object.keys(selectedRecord.playStyles).length ? (
+                <>
+                  <h3>Tagged play styles</h3>
+                  <StatsBreakdown stats={selectedRecord.playStyles} statDefinitions={statDefinitions} />
+                </>
               ) : null}
               <h3>All saved stats</h3>
               <StatsBreakdown stats={selectedRecord.stats} statDefinitions={statDefinitions} />
