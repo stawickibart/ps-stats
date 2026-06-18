@@ -1175,6 +1175,7 @@ function App() {
   const [showMatchSetupDetails, setShowMatchSetupDetails] = useState(false);
   const [showPlayTagging, setShowPlayTagging] = useState(false);
   const [showAdvancedTags, setShowAdvancedTags] = useState(false);
+  const [raterSetupComplete, setRaterSetupComplete] = useState(false);
   const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
   const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
   const [eventRequiredAfterPause, setEventRequiredAfterPause] = useState(false);
@@ -1277,20 +1278,23 @@ function App() {
   );
   const homeActiveForStart = match.players.filter((player) => player.team === "home" && player.active !== false);
   const awayActiveForStart = match.players.filter((player) => player.team === "away" && player.active !== false);
-  const initialRaterSetupComplete =
+  const initialRaterSetupFieldsComplete =
     Boolean(match.gameLocation.trim()) &&
     Boolean(match.homeTeam.trim()) &&
     Boolean(match.awayTeam.trim()) &&
     homeActiveForStart.length === 4 &&
     awayActiveForStart.length === 4 &&
     [...homeActiveForStart, ...awayActiveForStart].every((player) => player.name.trim());
-  const showOnlyInitialRaterSetup = role === "rater" && page === "tracker" && !firstHalfStarted;
+  const showOnlyInitialRaterSetup = role === "rater" && page === "tracker" && !raterSetupComplete;
 
   const isCalibrationPlaybackAllowed =
     match.video.firstHalfStartVideoSeconds === undefined ||
     (match.video.firstHalfEndVideoSeconds !== undefined && match.video.secondHalfStartVideoSeconds === undefined);
 
   const playbackBlockReason = useMemo(() => {
+    if (showOnlyInitialRaterSetup) {
+      return "";
+    }
     if (isCalibrationPlaybackAllowed) {
       return "";
     }
@@ -1306,10 +1310,16 @@ function App() {
         : "Select the player in possession before playing.";
     }
     return "";
-  }, [activePossessionParticipants, eventRequiredAfterPause, isCalibrationPlaybackAllowed, match.activePossession]);
+  }, [
+    activePossessionParticipants,
+    eventRequiredAfterPause,
+    isCalibrationPlaybackAllowed,
+    match.activePossession,
+    showOnlyInitialRaterSetup,
+  ]);
 
   const canPlayVideo = playbackBlockReason === "";
-  const raterFlowStep: RaterFlowStep = !firstHalfStarted
+  const raterFlowStep: RaterFlowStep = !raterSetupComplete
     ? "setup"
     : pendingStructuredEvent
       ? "event-confirm"
@@ -2188,6 +2198,7 @@ function App() {
       team: startingPossessionTeam,
       primaryPlayerId: centerPlayerId,
     }));
+    setRaterSetupComplete(true);
     previousPossessionVideoSeconds.current = currentVideoSeconds;
     notify(
       "success",
@@ -2247,6 +2258,7 @@ function App() {
     setCurrentVideoSeconds(0);
     setCurrentVideoDuration(0);
     setEventRequiredAfterPause(false);
+    setRaterSetupComplete(false);
     previousPossessionVideoSeconds.current = 0;
   };
 
@@ -2392,6 +2404,7 @@ function App() {
             onClick={() => {
               setRole("rater");
               setPage("tracker");
+              setRaterSetupComplete(false);
             }}
           >
             <span>Rater</span>
@@ -2483,7 +2496,7 @@ function App() {
 
       <NoticeCenter notices={showOnlyInitialRaterSetup ? notices : [...notices, ...setupWarnings]} onDismiss={dismissNotice} />
 
-      {page === "tracker" && firstHalfStarted ? (
+      {page === "tracker" && raterSetupComplete ? (
         <section className={canPlayVideo ? "playback-readiness ready" : "playback-readiness blocked"}>
           <strong>{canPlayVideo ? "Video playback ready" : "Video playback blocked"}</strong>
           <span>{topPlaybackMessage}</span>
@@ -2529,7 +2542,7 @@ function App() {
         }
         aria-labelledby="video-title"
       >
-        {firstHalfStarted ? (
+        {raterSetupComplete ? (
         <div className="section-heading-row">
           <div>
             <p className="section-kicker">Video sync</p>
@@ -2577,12 +2590,12 @@ function App() {
               onPlayingChange={setIsVideoPlaying}
               onUserPause={handleVideoPause}
             />
-            {firstHalfStarted && playbackBlockReason ? (
+            {raterSetupComplete && playbackBlockReason ? (
               <p className="playback-gate-message">{playbackBlockReason}</p>
-            ) : firstHalfStarted ? (
+            ) : raterSetupComplete ? (
               <p className="playback-gate-message ready">Ready to play with current time-tracking state.</p>
             ) : null}
-            {!firstHalfStarted ? (
+            {!raterSetupComplete ? (
               <section className="start-match-panel" aria-labelledby="start-match-title">
                 <p className="section-kicker">Start first half</p>
                 <h3 id="start-match-title">Mark kickoff and starting possession</h3>
@@ -2636,11 +2649,11 @@ function App() {
                   type="button"
                   className="primary-action"
                   onClick={startFirstHalfWithPossession}
-                  disabled={!initialRaterSetupComplete}
+                  disabled={!initialRaterSetupFieldsComplete}
                 >
                   Mark 1H start at {formatClock(currentVideoSeconds)}
                 </button>
-                {!initialRaterSetupComplete ? (
+                {!initialRaterSetupFieldsComplete ? (
                   <p className="setup-start-hint">
                     Fill in location, both teams, and exactly four named active players per team to start rating.
                   </p>
@@ -2682,7 +2695,7 @@ function App() {
             )}
           </div>
 
-          {firstHalfStarted ? (
+          {raterSetupComplete ? (
           <div className="sync-column">
             {videoSyncComplete && !showVideoSyncDetails ? (
               <section className="current-time-card">
@@ -2794,7 +2807,7 @@ function App() {
         </div>
       </section>
 
-      {firstHalfStarted ? (
+      {raterSetupComplete ? (
       <>
       {!showMatchSetupDetails ? (
         <section className="panel setup-summary-panel">
