@@ -64,6 +64,19 @@ type AppNotice = {
   message: string;
 };
 
+type StructuredEventType = "pass" | "dribble" | "shot" | "engagement" | "turnover" | "note";
+
+type StructuredEventForm = {
+  type: StructuredEventType;
+  team: TeamSide;
+  primaryPlayerId: string;
+  secondaryPlayerId: string;
+  opponentPlayerId: string;
+  outcome: string;
+  direction: "" | "left" | "right";
+  detail: string;
+};
+
 type PossessionSelection = {
   homePlayerId: string;
   awayPlayerId: string;
@@ -157,6 +170,19 @@ function defaultPossessionSelection(_players: PlayerSlot[]): PossessionSelection
     awayPlayerId: "",
     contestedPlayerOneId: "",
     contestedPlayerTwoId: "",
+  };
+}
+
+function defaultStructuredEventForm(): StructuredEventForm {
+  return {
+    type: "pass",
+    team: "home",
+    primaryPlayerId: "",
+    secondaryPlayerId: "",
+    opponentPlayerId: "",
+    outcome: "completed",
+    direction: "",
+    detail: "",
   };
 }
 
@@ -891,6 +917,7 @@ function App() {
   const [playTeam, setPlayTeam] = useState<TeamSide>("home");
   const [playType, setPlayType] = useState<PlayType>("offense");
   const [selectedPlayId, setSelectedPlayId] = useState(DEFAULT_PLAYS[0].id);
+  const [eventForm, setEventForm] = useState<StructuredEventForm>(() => defaultStructuredEventForm());
   const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
   const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
   const [eventRequiredAfterPause, setEventRequiredAfterPause] = useState(false);
@@ -1231,6 +1258,63 @@ function App() {
     }));
   };
 
+  const buildRecordedEvent = (
+    current: MatchState,
+    event: Omit<StatEvent, "id" | "bucket" | "minute" | "note" | "recordedAt">,
+    noteOverride?: string,
+  ): StatEvent => ({
+    ...event,
+    id: createEventId(),
+    half: derivedVideoTime.half,
+    matchSeconds: derivedVideoTime.matchSeconds,
+    videoUrl: current.video.videoUrl,
+    videoId: current.video.videoId,
+    videoSeconds: currentVideoSeconds,
+    bucket: current.video.syncEnabled ? derivedVideoTime.bucket : current.activeBucket,
+    minute: current.video.syncEnabled ? derivedVideoTime.minute : current.minute,
+    note: noteOverride ?? current.note,
+    recordedAt: new Date().toISOString(),
+  });
+
+  const addStructuredEvents = (
+    events: Array<Omit<StatEvent, "id" | "bucket" | "minute" | "note" | "recordedAt">>,
+    noteOverride?: string,
+  ) => {
+    setEventRequiredAfterPause(false);
+    setMatch((current) => ({
+      ...current,
+      note: "",
+      nextStatValue: "",
+      events: [
+        ...events.map((event) => buildRecordedEvent(current, event, noteOverride)),
+        ...current.events,
+      ],
+    }));
+  };
+
+  const statPayloadForPlayer = (
+    player: PlayerSlot,
+    statCode: string,
+  ): Omit<StatEvent, "id" | "bucket" | "minute" | "note" | "recordedAt"> | undefined => {
+    const stat = match.statDefinitions.find((definition) => definition.code === statCode);
+    if (!stat) {
+      notify("error", "Unknown stat", `Could not find a stat definition for ${statCode}.`);
+      return undefined;
+    }
+
+    return {
+      kind: "stat",
+      team: player.team,
+      playerId: player.id,
+      playerName: player.name,
+      playerRole: player.role,
+      statCode: stat.code,
+      statLabel: stat.label,
+      statValueType: stat.valueType,
+      statValue: stat.valueType === "integer" ? "1" : "",
+    };
+  };
+
   const addStatEvent = (player: PlayerSlot, statCode: string) => {
     const stat = match.statDefinitions.find((definition) => definition.code === statCode);
     if (!stat) {
@@ -1296,6 +1380,127 @@ function App() {
       playType: play.type,
       playArtUrl: play.artUrl,
     });
+  };
+
+  const submitStructuredEvent = () => {
+    const primary = match.players.find((player) => player.id === eventForm.primaryPlayerId);
+    const secondary = match.players.find((player) => player.id === eventForm.secondaryPlayerId);
+    const opponent = match.players.find((player) => player.id === eventForm.opponentPlayerId);
+    const events: Array<Omit<StatEvent, "id" | "bucket" | "minute" | "note" | "recordedAt">> = [];
+    const addStat = (player: PlayerSlot | undefined, statCode: string) => {
+      if (!player) {
+        return;
+      }
+      const payload = statPayloadForPlayer(player, statCode);
+      if (payload) {
+        events.push(payload);
+      }
+    };
+
+    if (eventForm.type !== "note" && !primary) {
+      notify("error", "Missing event player", "Select the primary player involved in the event.");
+      return;
+    }
+
+    if (eventForm.type === "pass") {
+      if (["completed", "key-pass", "shot-assist", "assist"].includes(eventForm.outcome) && !secondary) {
+        notify("error", "Missing receiver", "Select the player who received the completed pass.");
+        return;
+      }
+      addStat(primary, "Pas");
+      if (eventForm.direction === "left") addStat(primary, "Lft");
+      if (eventForm.direction === "right") addStat(primary, "Rgt");
+
+      if (["completed", "key-pass", "shot-assist", "assist"].includes(eventForm.outcome)) {
+        addStat(primary, "Pc");
+        addStat(secondary, "Rec");
+      }
+      if (eventForm.outcome === "misplaced" || eventForm.outcome === "turnover") {
+        addStat(primary, "Mp");
+      }
+      if (eventForm.outcome === "turnover") {
+        addStat(primary, "Lp");
+        addStat(primary, "-");
+      }
+      if (eventForm.outcome === "key-pass") addStat(primary, "KP");
+      if (eventForm.outcome === "shot-assist") addStat(primary, "ShA");
+      if (eventForm.outcome === "assist") addStat(primary, "A");
+    }
+
+    if (eventForm.type === "dribble") {
+      addStat(primary, "DrbA");
+      if (eventForm.direction === "left") addStat(primary, "Lft");
+      if (eventForm.direction === "right") addStat(primary, "Rgt");
+      if (["successful", "progressive"].includes(eventForm.outcome)) addStat(primary, "DrbS");
+      if (eventForm.outcome === "progressive") addStat(primary, "ProgC");
+      if (eventForm.outcome === "turnover" || eventForm.outcome === "unsuccessful") {
+        addStat(primary, "Lp");
+        addStat(primary, "-");
+      }
+      if (eventForm.outcome === "foul-suffered") addStat(primary, "FS");
+    }
+
+    if (eventForm.type === "shot") {
+      if (["saved", "blocked"].includes(eventForm.outcome) && !opponent) {
+        notify("error", "Missing defender", "Select the opponent who saved or blocked the shot.");
+        return;
+      }
+      addStat(primary, "Sh");
+      if (["on-target", "goal", "saved", "blocked"].includes(eventForm.outcome)) addStat(primary, "SoT");
+      if (eventForm.outcome === "goal") addStat(primary, "G");
+      if (eventForm.outcome === "blocked") addStat(opponent, "Blk");
+      if (eventForm.outcome === "saved") addStat(opponent, "Sv");
+      if (secondary && eventForm.outcome === "goal") addStat(secondary, "A");
+      if (secondary && eventForm.outcome !== "goal") addStat(secondary, "ShA");
+    }
+
+    if (eventForm.type === "engagement") {
+      if (eventForm.outcome === "offensive-won") addStat(primary, "ODw");
+      if (eventForm.outcome === "defensive-won") {
+        addStat(primary, "DDw");
+        addStat(primary, "Wp");
+      }
+      if (eventForm.outcome === "duel-lost") addStat(primary, "DuL");
+      if (eventForm.outcome === "foul-committed") addStat(primary, "Fl");
+      if (eventForm.outcome === "foul-suffered") addStat(primary, "FS");
+      if (eventForm.outcome === "2on1-forced") addStat(primary, "2o1F");
+      if (eventForm.outcome === "2on1-committed") addStat(primary, "2o1C");
+      if (eventForm.outcome === "goal-area-positioning") addStat(primary, "GAP");
+      if (eventForm.outcome === "dogso") addStat(primary, "DOGSO");
+    }
+
+    if (eventForm.type === "turnover") {
+      addStat(primary, "Lp");
+      addStat(primary, "-");
+      if (eventForm.outcome === "unsuccessful-pass") addStat(primary, "Mp");
+      if (eventForm.outcome === "failed-dribble") addStat(primary, "DrbA");
+      if (eventForm.outcome === "lost-duel") addStat(primary, "DuL");
+      if (eventForm.outcome === "2on1") addStat(primary, "2o1C");
+    }
+
+    if (eventForm.type === "note") {
+      if (!eventForm.detail.trim() && !match.note.trim()) {
+        notify("error", "Missing note", "Enter a note describing the event.");
+        return;
+      }
+      events.push({
+        kind: "note",
+        team: eventForm.team,
+        statLabel: "Event note",
+      });
+    }
+
+    if (!events.length) {
+      notify("error", "No event details", "Choose an event type and outcome that records at least one stat.");
+      return;
+    }
+
+    addStructuredEvents(events, eventForm.detail || match.note);
+    setEventForm((current) => ({
+      ...defaultStructuredEventForm(),
+      team: current.team,
+    }));
+    notify("success", "Event recorded", "The event details were converted into stat entries.");
   };
 
   const selectPossession = (owner: PossessionOwner) => {
@@ -1865,22 +2070,15 @@ function App() {
         </label>
       </section>
 
-      <section className="columns">
-        <PlayerTeamPanel
-          title={match.homeTeam}
-          players={homePlayers}
-          stats={activeStats}
-          onPlayerChange={updatePlayer}
-          onStat={addStatEvent}
-        />
-        <PlayerTeamPanel
-          title={match.awayTeam}
-          players={awayPlayers}
-          stats={activeStats}
-          onPlayerChange={updatePlayer}
-          onStat={addStatEvent}
-        />
-      </section>
+      <EventCapturePanel
+        form={eventForm}
+        homeTeam={match.homeTeam}
+        awayTeam={match.awayTeam}
+        players={match.players}
+        eventRequiredAfterPause={eventRequiredAfterPause}
+        onChange={(patch) => setEventForm((current) => ({ ...current, ...patch }))}
+        onSubmit={submitStructuredEvent}
+      />
 
       <section className="columns secondary-columns">
         <section className="panel" aria-labelledby="set-piece-title">
@@ -2133,6 +2331,16 @@ type PlayerTeamPanelProps = {
   stats: StatDefinition[];
   onPlayerChange: (playerId: string, patch: Partial<PlayerSlot>) => void;
   onStat: (player: PlayerSlot, statCode: string) => void;
+};
+
+type EventCapturePanelProps = {
+  form: StructuredEventForm;
+  homeTeam: string;
+  awayTeam: string;
+  players: PlayerSlot[];
+  eventRequiredAfterPause: boolean;
+  onChange: (patch: Partial<StructuredEventForm>) => void;
+  onSubmit: () => void;
 };
 
 type AnchorRowProps = {
@@ -2461,6 +2669,224 @@ function EventLog({ events, title, description, teamName, onDelete, onReset }: E
           ))}
         </div>
       )}
+    </section>
+  );
+}
+
+const EVENT_TYPE_OPTIONS: Array<{ value: StructuredEventType; label: string }> = [
+  { value: "pass", label: "Pass" },
+  { value: "dribble", label: "Dribble / carry" },
+  { value: "shot", label: "Shot" },
+  { value: "engagement", label: "Engagement / duel" },
+  { value: "turnover", label: "Turnover" },
+  { value: "note", label: "Other / note" },
+];
+
+const OUTCOME_OPTIONS: Record<StructuredEventType, Array<{ value: string; label: string }>> = {
+  pass: [
+    { value: "completed", label: "Completed" },
+    { value: "misplaced", label: "Misplaced" },
+    { value: "turnover", label: "Turnover" },
+    { value: "key-pass", label: "Key pass / big chance" },
+    { value: "shot-assist", label: "Led to shot" },
+    { value: "assist", label: "Assist" },
+  ],
+  dribble: [
+    { value: "successful", label: "Successful" },
+    { value: "progressive", label: "Progressive carry" },
+    { value: "unsuccessful", label: "Unsuccessful" },
+    { value: "turnover", label: "Turnover" },
+    { value: "foul-suffered", label: "Foul suffered" },
+  ],
+  shot: [
+    { value: "goal", label: "Goal" },
+    { value: "on-target", label: "On target" },
+    { value: "saved", label: "Saved" },
+    { value: "blocked", label: "Blocked" },
+    { value: "near-miss", label: "Near miss" },
+  ],
+  engagement: [
+    { value: "offensive-won", label: "Offensive duel won" },
+    { value: "defensive-won", label: "Defensive duel won" },
+    { value: "duel-lost", label: "Duel lost" },
+    { value: "foul-committed", label: "Foul committed" },
+    { value: "foul-suffered", label: "Foul suffered" },
+    { value: "2on1-forced", label: "2-on-1 forced" },
+    { value: "2on1-committed", label: "2-on-1 committed" },
+    { value: "goal-area-positioning", label: "Goal-area positioning" },
+    { value: "dogso", label: "DOGSO" },
+  ],
+  turnover: [
+    { value: "unsuccessful-pass", label: "Unsuccessful pass" },
+    { value: "failed-dribble", label: "Failed dribble" },
+    { value: "lost-duel", label: "Lost duel" },
+    { value: "2on1", label: "2-on-1" },
+    { value: "other", label: "Other" },
+  ],
+  note: [{ value: "note", label: "Note only" }],
+};
+
+function playerOptionLabel(player: PlayerSlot) {
+  return `${player.name} (${player.role})`;
+}
+
+function EventCapturePanel({
+  form,
+  homeTeam,
+  awayTeam,
+  players,
+  eventRequiredAfterPause,
+  onChange,
+  onSubmit,
+}: EventCapturePanelProps) {
+  const teamPlayers = players.filter((player) => player.team === form.team);
+  const opponentPlayers = players.filter((player) => player.team !== form.team);
+  const outcomeOptions = OUTCOME_OPTIONS[form.type];
+  const needsReceiver = form.type === "pass" || form.type === "shot";
+  const needsOpponent =
+    form.type === "shot" && ["saved", "blocked"].includes(form.outcome);
+  const showDirection = form.type === "pass" || form.type === "dribble";
+
+  return (
+    <section className="panel event-capture-panel" aria-labelledby="event-capture-title">
+      <div>
+        <p className="section-kicker">Paused-video event</p>
+        <h2 id="event-capture-title">What just happened?</h2>
+        <p className="muted">
+          Enter the event from the paused video. The app converts your choices into the underlying
+          stat entries automatically.
+        </p>
+      </div>
+      {eventRequiredAfterPause ? (
+        <p className="event-required-banner">
+          Required after pause: log at least one event here before the video can resume.
+        </p>
+      ) : null}
+      <div className="event-step-grid">
+        <label>
+          1. Event type
+          <select
+            value={form.type}
+            onChange={(event) => {
+              const nextType = event.target.value as StructuredEventType;
+              onChange({
+                type: nextType,
+                outcome: OUTCOME_OPTIONS[nextType][0].value,
+                primaryPlayerId: "",
+                secondaryPlayerId: "",
+                opponentPlayerId: "",
+                direction: "",
+              });
+            }}
+          >
+            {EVENT_TYPE_OPTIONS.map((option) => (
+              <option value={option.value} key={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Team
+          <select
+            value={form.team}
+            onChange={(event) =>
+              onChange({
+                team: event.target.value as TeamSide,
+                primaryPlayerId: "",
+                secondaryPlayerId: "",
+                opponentPlayerId: "",
+              })
+            }
+          >
+            <option value="home">{homeTeam}</option>
+            <option value="away">{awayTeam}</option>
+          </select>
+        </label>
+        <label>
+          2. Outcome
+          <select value={form.outcome} onChange={(event) => onChange({ outcome: event.target.value })}>
+            {outcomeOptions.map((option) => (
+              <option value={option.value} key={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {form.type !== "note" ? (
+        <div className="event-step-grid">
+          <label>
+            Primary player
+            <select value={form.primaryPlayerId} onChange={(event) => onChange({ primaryPlayerId: event.target.value })}>
+              <option value="">Select player</option>
+              {teamPlayers.map((player) => (
+                <option value={player.id} key={player.id}>
+                  {playerOptionLabel(player)}
+                </option>
+              ))}
+            </select>
+          </label>
+          {needsReceiver ? (
+            <label>
+              {form.type === "pass" ? "Receiving player" : "Assisting player (optional)"}
+              <select
+                value={form.secondaryPlayerId}
+                onChange={(event) => onChange({ secondaryPlayerId: event.target.value })}
+              >
+                <option value="">None / unknown</option>
+                {teamPlayers.map((player) => (
+                  <option value={player.id} key={player.id}>
+                    {playerOptionLabel(player)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {needsOpponent || form.type === "engagement" ? (
+            <label>
+              Opponent involved {needsOpponent ? "" : "(optional)"}
+              <select
+                value={form.opponentPlayerId}
+                onChange={(event) => onChange({ opponentPlayerId: event.target.value })}
+              >
+                <option value="">None / unknown</option>
+                {opponentPlayers.map((player) => (
+                  <option value={player.id} key={player.id}>
+                    {playerOptionLabel(player)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {showDirection ? (
+            <label>
+              Direction
+              <select value={form.direction} onChange={(event) => onChange({ direction: event.target.value as "" | "left" | "right" })}>
+                <option value="">Not tagged</option>
+                <option value="left">To player's left</option>
+                <option value="right">To player's right</option>
+              </select>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
+      <label>
+        Event detail
+        <textarea
+          value={form.detail}
+          onChange={(event) => onChange({ detail: event.target.value })}
+          placeholder="Example: turnover from unsuccessful pass, Bart to Lola, pressure by Opp C..."
+        />
+      </label>
+
+      <div className="action-row">
+        <button type="button" className="primary-action" onClick={onSubmit}>
+          Record event
+        </button>
+      </div>
     </section>
   );
 }

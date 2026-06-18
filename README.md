@@ -5,7 +5,8 @@ A browser-based rater console for collecting power soccer match statistics while
 ## Features
 
 - Editable home/away team names and player/role slots based on the sample spreadsheet layout.
-- One-tap stat entry for the definitions sheet: goals, assists, saves, shots, stops, possession wins/losses, transitions, passing/carrying progression, duels, left/right pass or dribble side, fouls, set-piece/penalty outcomes, positioning offenses, and 2-on-1s.
+- Event-based paused-video data entry that converts passes, dribbles/carries, shots, engagements, turnovers, and notes into stat events.
+- Stat coverage for goals, assists, saves, shots, stops, possession wins/losses, transitions, passing/carrying progression, duels, left/right pass or dribble side, fouls, set-piece/penalty outcomes, positioning offenses, and 2-on-1s.
 - 5-minute time buckets plus extra time to match the spreadsheet template.
 - Set-piece tracking with type and 1-5 outcome rating.
 - Tagged notes for additional metrics listed in the definitions tab.
@@ -59,11 +60,11 @@ npm test
 6. Select the current time-tracking category before playing the video: home possession, away possession, contested possession, or out of play. For home/away possession, select one player from that team; for contested possession, select one player from each team; out of play does not require player selection.
 7. The video is blocked from playing until the required time-tracking state is complete.
 8. The active category and selected player context are tracked while the video plays forward and appear in the timeline under the video.
-9. If you pause the video, the current time-tracking selection is cleared. Before resuming, log at least one event and then choose a fresh time-tracking state.
+9. If you pause the video, the current time-tracking selection is cleared and the paused-video event form becomes required.
 10. If you rewind into already-tagged possession time and choose a different possession or player context, confirm the override before later possession tags are trimmed and replaced.
-11. Optionally type a note for the next event.
-12. Optionally enter a value for the next stat if the stat definition uses a value type other than a simple count.
-13. Tap the stat button on the relevant player card.
+11. In the event form, choose what happened first: pass, dribble/carry, shot, engagement/duel, turnover, or note.
+12. Fill in the dynamic details requested for that event, such as passer/receiver, shooter/assistant, defender, direction, and outcome.
+13. Click **Record event**. Before resuming after a pause, log at least one event and then choose a fresh time-tracking state.
 14. Use the play tagging panel to record which offensive or defensive play a team is running.
 15. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.
 16. Click **Finish game & update knowledge base** to snapshot the game into player/team history.

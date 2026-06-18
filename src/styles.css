@@ -670,6 +670,28 @@ td:first-child {
   font-size: 0.95rem;
 }
 
+.event-capture-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.event-step-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  align-items: end;
+}
+
+.event-required-banner {
+  margin: 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid #f59e0b;
+  border-radius: 14px;
+  background: #fffbf0;
+  color: #7a4a04;
+  font-weight: 900;
+}
+
 .columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1162,6 +1184,7 @@ td:first-child {
   .setup-grid,
   .knowledge-layout,
   .performance-layout,
+  .event-step-grid,
   .play-controls,
   .settings-grid {
     grid-template-columns: 1fr;
