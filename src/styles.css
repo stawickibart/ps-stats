@@ -503,6 +503,43 @@ td:first-child {
   gap: 0.75rem;
 }
 
+.start-checklist {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.start-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.45rem;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #f4bf70;
+  border-radius: 14px;
+  background: #fffbf0;
+}
+
+.start-check.complete {
+  border-color: #92d9ad;
+  background: #f2fff6;
+}
+
+.start-check strong {
+  grid-row: span 2;
+  color: var(--primary-dark);
+}
+
+.start-check span {
+  color: #17233a;
+  font-weight: 900;
+}
+
+.start-check small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .roster-setup-panel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1301,6 +1338,116 @@ td:first-child {
   background: #e9f0ff;
 }
 
+.game-flow-visualization {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.game-flow-track {
+  position: relative;
+  height: 72px;
+  border: 1px solid #cbd8e7;
+  border-radius: 18px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(10% - 1px),
+      rgb(20 32 51 / 10%) calc(10% - 1px),
+      rgb(20 32 51 / 10%) 10%
+    ),
+    linear-gradient(180deg, #f8fbff, #eef4ff);
+}
+
+.game-flow-marker {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  box-shadow: 0 6px 16px rgb(16 24 40 / 18%);
+  transform: translate(-50%, -50%);
+}
+
+.marker-home {
+  top: 36%;
+}
+
+.marker-away {
+  top: 64%;
+}
+
+.marker-goal {
+  background: #16a34a;
+}
+
+.marker-shot {
+  background: #2563eb;
+}
+
+.marker-turnover {
+  background: #dc2626;
+}
+
+.marker-set-piece {
+  background: #f59e0b;
+}
+
+.marker-substitution {
+  background: #0ea5e9;
+}
+
+.marker-event {
+  background: #64748b;
+}
+
+.game-flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.game-flow-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #42526a;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.game-flow-legend span::before {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  content: "";
+  background: currentColor;
+}
+
+.game-flow-legend .marker-goal {
+  color: #16a34a;
+}
+
+.game-flow-legend .marker-shot {
+  color: #2563eb;
+}
+
+.game-flow-legend .marker-turnover {
+  color: #dc2626;
+}
+
+.game-flow-legend .marker-set-piece {
+  color: #f59e0b;
+}
+
+.game-flow-legend .marker-substitution {
+  color: #0ea5e9;
+}
+
 .performance-layout {
   display: grid;
   grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
@@ -1471,6 +1618,7 @@ td:first-child {
   .player-fields,
   .possession-buttons,
   .possession-player-grid,
+  .start-checklist,
   .roster-row,
   .start-setup-grid,
   .set-piece-controls,

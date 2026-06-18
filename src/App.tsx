@@ -2489,6 +2489,13 @@ function App() {
                   Before rating begins, mark the video timestamp where the first half starts and
                   choose the team with the ball. That team's center is assumed to be in possession.
                 </p>
+                <StartSetupChecklist
+                  players={match.players}
+                  location={match.gameLocation}
+                  startingTeam={startingPossessionTeam}
+                  homeTeam={match.homeTeam}
+                  awayTeam={match.awayTeam}
+                />
                 <div className="start-setup-grid">
                   <label>
                     Game location
@@ -2944,6 +2951,14 @@ type RosterSetupPanelProps = {
   awayTeam: string;
   onPlayerChange: (playerId: string, patch: Partial<PlayerSlot>) => void;
   onAddSubstitute: (team: TeamSide) => void;
+};
+
+type StartSetupChecklistProps = {
+  players: PlayerSlot[];
+  location: string;
+  startingTeam: TeamSide;
+  homeTeam: string;
+  awayTeam: string;
 };
 
 type SubstitutionPanelProps = {
@@ -3471,6 +3486,45 @@ function CourtAreaPicker({ title, depth, lane, onSelect }: CourtAreaPickerProps)
         <span>Attack direction</span>
         <span>Opposition goal</span>
       </div>
+    </div>
+  );
+}
+
+function StartSetupChecklist({ players, location, startingTeam, homeTeam, awayTeam }: StartSetupChecklistProps) {
+  const homeActive = players.filter((player) => player.team === "home" && player.active !== false);
+  const awayActive = players.filter((player) => player.team === "away" && player.active !== false);
+  const checks = [
+    {
+      label: "Game location",
+      complete: Boolean(location.trim()),
+      detail: location.trim() || "not set",
+    },
+    {
+      label: `${homeTeam} active players`,
+      complete: homeActive.length === 4 && homeActive.every((player) => player.name.trim()),
+      detail: `${homeActive.length}/4 active`,
+    },
+    {
+      label: `${awayTeam} active players`,
+      complete: awayActive.length === 4 && awayActive.every((player) => player.name.trim()),
+      detail: `${awayActive.length}/4 active`,
+    },
+    {
+      label: "Starting possession",
+      complete: true,
+      detail: startingTeam === "home" ? homeTeam : awayTeam,
+    },
+  ];
+
+  return (
+    <div className="start-checklist">
+      {checks.map((check) => (
+        <div className={check.complete ? "start-check complete" : "start-check"} key={check.label}>
+          <strong>{check.complete ? "✓" : "!"}</strong>
+          <span>{check.label}</span>
+          <small>{check.detail}</small>
+        </div>
+      ))}
     </div>
   );
 }
@@ -4104,6 +4158,55 @@ type TaggedGameViewPageProps = {
   teamName: (team: TeamSide) => string;
 };
 
+function gameFlowKind(event: StatEvent) {
+  if (event.kind === "substitution") return "substitution";
+  if (event.kind === "set-piece" || event.eventSource === "set-piece") return "set-piece";
+  if (event.statCode === "G") return "goal";
+  if (event.statCode === "Sh" || event.statCode === "SoT") return "shot";
+  if (event.statCode === "Lp" || event.statCode === "-") return "turnover";
+  return "event";
+}
+
+function GameFlowVisualization({ game }: { game: GameSnapshot }) {
+  const timelineDuration = Math.max(2400, ...game.events.map((event) => event.videoSeconds ?? event.matchSeconds ?? 0), 1);
+  const flowEvents = game.events
+    .filter((event) => event.videoSeconds !== undefined || event.matchSeconds !== undefined)
+    .slice()
+    .sort((a, b) => (a.videoSeconds ?? a.matchSeconds ?? 0) - (b.videoSeconds ?? b.matchSeconds ?? 0));
+
+  if (!flowEvents.length) {
+    return <p className="empty-state">No timed events were saved for this game.</p>;
+  }
+
+  return (
+    <div className="game-flow-visualization">
+      <div className="game-flow-track" aria-label="Game event flow timeline">
+        {flowEvents.map((event) => {
+          const seconds = event.videoSeconds ?? event.matchSeconds ?? 0;
+          const kind = gameFlowKind(event);
+          return (
+            <span
+              className={`game-flow-marker marker-${kind} marker-${event.team}`}
+              key={event.id}
+              style={{ left: `${Math.min(100, (seconds / timelineDuration) * 100)}%` }}
+              title={`${formatClock(seconds)} ${event.playerName ?? ""} ${
+                event.statLabel ?? event.setPieceLabel ?? event.playName ?? event.kind
+              }`}
+            />
+          );
+        })}
+      </div>
+      <div className="game-flow-legend">
+        <span className="marker-goal">Goal</span>
+        <span className="marker-shot">Shot</span>
+        <span className="marker-turnover">Turnover</span>
+        <span className="marker-set-piece">Set piece</span>
+        <span className="marker-substitution">Substitution</span>
+      </div>
+    </div>
+  );
+}
+
 function TaggedGameTimeline({
   game,
 }: {
@@ -4114,10 +4217,13 @@ function TaggedGameTimeline({
 
   return (
     <section className="panel">
-      <p className="section-kicker">Possession timeline</p>
+      <p className="section-kicker">Tagged game review</p>
       <h2>
         {game.homeTeam} vs {game.awayTeam}
       </h2>
+      <h3>Game flow</h3>
+      <GameFlowVisualization game={game} />
+      <h3>Possession timeline</h3>
       {game.possessionSegments.length ? (
         <>
           <div className="possession-timeline review" aria-label="Tagged game possession timeline">
