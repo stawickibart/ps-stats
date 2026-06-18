@@ -28,6 +28,7 @@
   --possession-home: #2563eb;
   --possession-away: #dc2626;
   --possession-contested: #f59e0b;
+  --possession-out: #64748b;
   --danger: #b42318;
 }
 
@@ -412,7 +413,7 @@ td:first-child {
 
 .possession-buttons {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.6rem;
 }
 
@@ -472,6 +473,12 @@ td:first-child {
   background: rgb(245 158 11 / 14%);
 }
 
+.possession-button.possession-out,
+.legend-item.possession-out {
+  border-color: rgb(100 116 139 / 42%);
+  background: rgb(100 116 139 / 14%);
+}
+
 .possession-timeline {
   position: relative;
   overflow: hidden;
@@ -506,6 +513,10 @@ td:first-child {
 
 .possession-segment.possession-contested {
   background: var(--possession-contested);
+}
+
+.possession-segment.possession-out {
+  background: var(--possession-out);
 }
 
 .possession-cursor {

@@ -1,5 +1,5 @@
 export type TeamSide = "home" | "away";
-export type PossessionOwner = TeamSide | "contested";
+export type PossessionOwner = TeamSide | "contested" | "out";
 
 export type PlayerSlot = {
   id: string;

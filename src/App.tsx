@@ -91,6 +91,7 @@ type TeamKnowledge = {
   goalsAgainst: number;
   possessionSeconds: number;
   contestedSeconds: number;
+  outOfPlaySeconds: number;
   stats: StatTotals;
   playStyles: StatTotals;
   ratings: RatingScores;
@@ -244,6 +245,10 @@ function normalizePossessionSelection(selection: PossessionSelection | undefined
 }
 
 function selectedPossessionPlayerIds(owner: PossessionOwner, selection: PossessionSelection) {
+  if (owner === "out") {
+    return [];
+  }
+
   if (owner === "home") {
     return selection.homePlayerId ? [selection.homePlayerId] : [];
   }
@@ -265,6 +270,13 @@ function resolvePossessionParticipants(
   selection: PossessionSelection,
   players: PlayerSlot[],
 ) {
+  if (owner === "out") {
+    return {
+      ids: [],
+      names: [],
+    };
+  }
+
   const ids = selectedPossessionPlayerIds(owner, selection);
   if (owner === "contested" && new Set(ids).size !== 2) {
     return undefined;
@@ -304,6 +316,7 @@ function normalizeKnowledgeBase(knowledgeBase?: KnowledgeBase) {
     teams:
       knowledgeBase?.teams.map((team) => ({
         ...team,
+        outOfPlaySeconds: team.outOfPlaySeconds ?? 0,
         playStyles: team.playStyles ?? {},
         ratings: normalizeRatings(team.ratings),
       })) ?? [],
@@ -377,7 +390,7 @@ function totalPossession(segments: PossessionSegment[]) {
       totals[segment.owner] += segment.endSeconds - segment.startSeconds;
       return totals;
     },
-    { home: 0, away: 0, contested: 0 },
+    { home: 0, away: 0, contested: 0, out: 0 },
   );
 }
 
@@ -659,6 +672,7 @@ function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
         goalsAgainst: 0,
         possessionSeconds: 0,
         contestedSeconds: 0,
+        outOfPlaySeconds: 0,
         stats: {},
         playStyles: {},
         ratings: emptyRatings(),
@@ -668,6 +682,7 @@ function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
     const gamesPlayed = previous.gamesPlayed + 1;
     const possessionSeconds = previous.possessionSeconds + game.possession[side];
     const contestedSeconds = previous.contestedSeconds + game.possession.contested;
+    const outOfPlaySeconds = (previous.outOfPlaySeconds ?? 0) + game.possession.out;
     const possessionTotal = possessionSeconds + contestedSeconds + game.possession[opponent];
     const stats = mergeStats(previous.stats, game.teamStats[side]);
     const playStyles = mergeStats(previous.playStyles ?? {}, game.teamPlayStyles[side] ?? {});
@@ -689,6 +704,7 @@ function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
       goalsAgainst: previous.goalsAgainst + goalsAgainst,
       possessionSeconds,
       contestedSeconds,
+      outOfPlaySeconds,
       stats,
       playStyles,
       ratings: calculateRatings(stats, {
@@ -2133,6 +2149,9 @@ function possessionLabel(owner: PossessionOwner, homeTeam: string, awayTeam: str
   if (owner === "away") {
     return awayTeam;
   }
+  if (owner === "out") {
+    return "Out of play";
+  }
   return "Contested";
 }
 
@@ -2159,11 +2178,10 @@ function PossessionTracker({
       accumulator[segment.owner] += segment.endSeconds - segment.startSeconds;
       return accumulator;
     },
-    { home: 0, away: 0, contested: 0 },
+    { home: 0, away: 0, contested: 0, out: 0 },
   );
   const homePlayers = players.filter((player) => player.team === "home");
   const awayPlayers = players.filter((player) => player.team === "away");
-  const allPlayers = players;
   const selectedParticipants = resolvePossessionParticipants(activePossession, selection, players);
 
   return (
@@ -2177,7 +2195,7 @@ function PossessionTracker({
         </p>
       </div>
       <div className="possession-buttons">
-        {(["home", "away", "contested"] as PossessionOwner[]).map((owner) => (
+        {(["home", "away", "contested", "out"] as PossessionOwner[]).map((owner) => (
           <button
             type="button"
             key={owner}
@@ -2193,68 +2211,80 @@ function PossessionTracker({
           </button>
         ))}
       </div>
-      <div className="possession-player-grid">
-        <label>
-          {homeTeam} player in possession
-          <select
-            value={selection.homePlayerId}
-            onChange={(event) => onSelectionChange({ homePlayerId: event.target.value })}
-            required
-          >
-            {homePlayers.map((player) => (
-              <option value={player.id} key={player.id}>
-                {player.name} ({player.role})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {awayTeam} player in possession
-          <select
-            value={selection.awayPlayerId}
-            onChange={(event) => onSelectionChange({ awayPlayerId: event.target.value })}
-            required
-          >
-            {awayPlayers.map((player) => (
-              <option value={player.id} key={player.id}>
-                {player.name} ({player.role})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Contested player 1
-          <select
-            value={selection.contestedPlayerOneId}
-            onChange={(event) => onSelectionChange({ contestedPlayerOneId: event.target.value })}
-            required
-          >
-            {allPlayers.map((player) => (
-              <option value={player.id} key={player.id}>
-                {player.name} ({player.role})
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Contested player 2
-          <select
-            value={selection.contestedPlayerTwoId}
-            onChange={(event) => onSelectionChange({ contestedPlayerTwoId: event.target.value })}
-            required
-          >
-            {allPlayers.map((player) => (
-              <option value={player.id} key={player.id}>
-                {player.name} ({player.role})
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {activePossession !== "out" ? (
+        <div className="possession-player-grid">
+          {activePossession === "home" ? (
+            <label>
+              {homeTeam} player in possession
+              <select
+                value={selection.homePlayerId}
+                onChange={(event) => onSelectionChange({ homePlayerId: event.target.value })}
+                required
+              >
+                {homePlayers.map((player) => (
+                  <option value={player.id} key={player.id}>
+                    {player.name} ({player.role})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {activePossession === "away" ? (
+            <label>
+              {awayTeam} player in possession
+              <select
+                value={selection.awayPlayerId}
+                onChange={(event) => onSelectionChange({ awayPlayerId: event.target.value })}
+                required
+              >
+                {awayPlayers.map((player) => (
+                  <option value={player.id} key={player.id}>
+                    {player.name} ({player.role})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {activePossession === "contested" ? (
+            <>
+              <label>
+                {homeTeam} contesting player
+                <select
+                  value={selection.contestedPlayerOneId}
+                  onChange={(event) => onSelectionChange({ contestedPlayerOneId: event.target.value })}
+                  required
+                >
+                  {homePlayers.map((player) => (
+                    <option value={player.id} key={player.id}>
+                      {player.name} ({player.role})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {awayTeam} contesting player
+                <select
+                  value={selection.contestedPlayerTwoId}
+                  onChange={(event) => onSelectionChange({ contestedPlayerTwoId: event.target.value })}
+                  required
+                >
+                  {awayPlayers.map((player) => (
+                    <option value={player.id} key={player.id}>
+                      {player.name} ({player.role})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <p className={selectedParticipants ? "possession-context" : "possession-context warning"}>
         Active possession context:{" "}
         {selectedParticipants
-          ? `${possessionLabel(activePossession, homeTeam, awayTeam)} - ${selectedParticipants.names.join(" vs ")}`
+          ? `${possessionLabel(activePossession, homeTeam, awayTeam)}${
+              selectedParticipants.names.length ? ` - ${selectedParticipants.names.join(" vs ")}` : ""
+            }`
           : "Select the required player context before playing/tagging possession."}
       </p>
       <div className="possession-timeline" aria-label="Possession timeline">
@@ -2280,6 +2310,7 @@ function PossessionTracker({
         <span className="legend-item possession-home">{homeTeam}</span>
         <span className="legend-item possession-away">{awayTeam}</span>
         <span className="legend-item possession-contested">Contested</span>
+        <span className="legend-item possession-out">Out of play</span>
         <span>Cursor: {formatClock(currentVideoSeconds)}</span>
       </div>
     </section>
@@ -2676,6 +2707,10 @@ function KnowledgeBasePage({ knowledgeBase, statDefinitions }: KnowledgeBasePage
                   <div className="mini-card">
                     <strong>{formatClock(selectedRecord.possessionSeconds)}</strong>
                     <span>Tagged possession</span>
+                  </div>
+                  <div className="mini-card">
+                    <strong>{formatClock(selectedRecord.outOfPlaySeconds ?? 0)}</strong>
+                    <span>Out of play</span>
                   </div>
                 </div>
               ) : null}

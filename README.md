@@ -12,7 +12,7 @@ A browser-based rater console for collecting power soccer match statistics while
 - Local browser persistence, latest-entry audit trail, delete/undo-by-entry, and match reset.
 - CSV exports for both long-form event logs and spreadsheet-style player/time summaries.
 - YouTube video sync that maps video timestamps to match clock, half, and time bucket.
-- Possession timer with home/away/contested selections, required player context, and a colored video timeline.
+- Time tracker with home possession, away possession, contested possession, and out-of-play selections, required player context where applicable, and a colored video timeline.
 - Editable stat definitions with abbreviation, display name, definition, value type, color group, and active status.
 - Editable play library with offensive/defensive type, play name, play art link, and source link.
 - Unified event log with distinct visual treatments for stats, plays, set pieces, and notes.
@@ -56,8 +56,8 @@ npm test
 3. Choose whether the video starts in the first or second half, and enter the match clock at the start of the video.
 4. As the video plays, mark the first-half start, first-half end, and second-half start when those moments occur.
 5. Skip around the video as needed. When video sync is enabled, the match clock and time bucket update from the current playback position.
-6. Select possession: home, away, or contested. Also select the player in possession for home/away, or the two players contesting possession for contested.
-7. The active possession and selected player context are tracked while the video plays forward and appear in the timeline under the video.
+6. Select the current time-tracking category: home possession, away possession, contested possession, or out of play. For home/away possession, select one player from that team; for contested possession, select one player from each team; out of play does not require player selection.
+7. The active category and selected player context are tracked while the video plays forward and appear in the timeline under the video.
 8. If you rewind into already-tagged possession time and choose a different possession or player context, confirm the override before later possession tags are trimmed and replaced.
 9. Optionally type a note for the next event.
 10. Optionally enter a value for the next stat if the stat definition uses a value type other than a simple count.
