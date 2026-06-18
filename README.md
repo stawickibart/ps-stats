@@ -20,6 +20,7 @@ A browser-based rater console for collecting power soccer match statistics while
 - Knowledge base for finished games, teams, players, divisions, prior stats, heuristic quality scores, and radar-style capability diagrams.
 - In-app notifications for invalid entries and competing information such as bad stat values, missing possession players, duplicate contested players, or incomplete game metadata.
 - Role-based entry screen with a rater workspace for video tagging and an admin workspace for setup, review, knowledge base, and tagged-game views.
+- Default player roles are Goalie (1), Center (2), Near Wing (3), and Far Wing (4) for each team.
 
 ## Use without running npm locally
 
@@ -54,11 +55,11 @@ npm test
 ## Rater workflow
 
 1. Choose **Rater** on the entry screen.
-1. Enter team names, current clock, and the active time bucket.
-1. Load a YouTube video URL or ID in the video sync panel.
-1. Choose whether the video starts in the first or second half, and enter the match clock at the start of the video.
+1. Initially, only load/play the video and choose which team has the ball when the first half starts.
+1. Click **Mark 1H start** at the kickoff moment. The selected team's Center (2) is automatically assumed to have possession.
+1. After the first half has started, the rest of the rater tools appear.
 1. While calibrating the video, play/pause freely until the first-half start is marked. After the first-half end is marked, play/pause freely again until the second-half start is marked.
-1. As the video plays, mark the first-half start, first-half end, second-half start, and second-half end when those moments occur.
+1. As the video plays, mark first-half end, second-half start, and second-half end when those moments occur.
 1. Use the app-level Play/Pause buttons. They are disabled when playback is not allowed by the current workflow state.
 1. Select the current time-tracking category before playing match action: home possession, away possession, contested possession, or out of play. For home/away possession, select one player from that team; for contested possession, select one player from each team; out of play does not require player selection.
 1. The video is blocked from playing during match action until the required time-tracking state is complete. A readiness banner at the top explains what is missing.

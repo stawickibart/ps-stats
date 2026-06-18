@@ -201,6 +201,15 @@ function defaultStructuredEventForm(): StructuredEventForm {
   };
 }
 
+function centerPlayerIdForTeam(players: PlayerSlot[], team: TeamSide) {
+  return (
+    players.find((player) => player.team === team && player.role.toLowerCase().includes("center"))?.id ??
+    players.find((player) => player.team === team && player.role.startsWith("2"))?.id ??
+    players.find((player) => player.team === team)?.id ??
+    ""
+  );
+}
+
 const initialState: MatchState = {
   homeTeam: "Rock",
   awayTeam: "Opponent",
@@ -258,6 +267,29 @@ function normalizePlays(plays?: PlayDefinition[]) {
     artUrl: play.artUrl ?? "",
     active: play.active ?? true,
   }));
+}
+
+function normalizePlayers(players?: PlayerSlot[]) {
+  if (!players?.length) {
+    return DEFAULT_PLAYERS;
+  }
+
+  const oldDefaultIds = new Set([
+    "rock-c",
+    "rock-aw",
+    "rock-dw",
+    "rock-g",
+    "rock-flex",
+    "opp-c",
+    "opp-aw",
+    "opp-dw",
+    "opp-g",
+  ]);
+  if (players.some((player) => oldDefaultIds.has(player.id))) {
+    return DEFAULT_PLAYERS;
+  }
+
+  return players;
 }
 
 function normalizePossessionSegments(segments?: PossessionSegment[]) {
@@ -900,7 +932,7 @@ function readStoredState(): MatchState {
     }
 
     const parsed = JSON.parse(raw) as MatchState;
-    const players = parsed.players?.length ? parsed.players : initialState.players;
+    const players = normalizePlayers(parsed.players);
     return {
       ...initialState,
       ...parsed,
@@ -934,6 +966,7 @@ function App() {
   const [selectedSetPiece, setSelectedSetPiece] = useState(SET_PIECES[0].code);
   const [setPieceTeam, setSetPieceTeam] = useState<TeamSide>("home");
   const [setPieceRating, setSetPieceRating] = useState(3);
+  const [startingPossessionTeam, setStartingPossessionTeam] = useState<TeamSide>("home");
   const [playTeam, setPlayTeam] = useState<TeamSide>("home");
   const [playType, setPlayType] = useState<PlayType>("offense");
   const [selectedPlayId, setSelectedPlayId] = useState(DEFAULT_PLAYS[0].id);
@@ -955,6 +988,7 @@ function App() {
     () => deriveMatchTime(match.video, currentVideoSeconds),
     [currentVideoSeconds, match.video],
   );
+  const firstHalfStarted = match.video.firstHalfStartVideoSeconds !== undefined;
 
   const notify = useCallback((tone: NoticeTone, title: string, message: string) => {
     const id = createEventId();
@@ -1676,6 +1710,35 @@ function App() {
     });
   };
 
+  const startFirstHalfWithPossession = () => {
+    const centerPlayerId = centerPlayerIdForTeam(match.players, startingPossessionTeam);
+    setMatch((current) => ({
+      ...current,
+      activePossession: startingPossessionTeam,
+      possessionSelection: {
+        ...defaultPossessionSelection(current.players),
+        [startingPossessionTeam === "home" ? "homePlayerId" : "awayPlayerId"]: centerPlayerId,
+      },
+      video: {
+        ...current.video,
+        firstHalfStartVideoSeconds: currentVideoSeconds,
+        firstHalfStartMatchClock: current.video.firstHalfStartMatchClock || "0:00",
+      },
+    }));
+    setEventRequiredAfterPause(false);
+    setEventForm((current) => ({
+      ...current,
+      team: startingPossessionTeam,
+      primaryPlayerId: centerPlayerId,
+    }));
+    previousPossessionVideoSeconds.current = currentVideoSeconds;
+    notify(
+      "success",
+      "First half started",
+      `${startingPossessionTeam === "home" ? match.homeTeam : match.awayTeam} starts with center in possession.`,
+    );
+  };
+
   const markFirstHalfEnd = () => {
     updateVideo({
       firstHalfEndVideoSeconds: currentVideoSeconds,
@@ -2042,20 +2105,56 @@ function App() {
             ) : (
               <p className="playback-gate-message ready">Ready to play with current time-tracking state.</p>
             )}
-            <PossessionTracker
-              activePossession={match.activePossession}
-              currentVideoSeconds={currentVideoSeconds}
-              durationSeconds={currentVideoDuration}
-              homeTeam={match.homeTeam}
-              awayTeam={match.awayTeam}
-              players={match.players}
-              selection={match.possessionSelection}
-              segments={match.possessionSegments}
-              onSelect={selectPossession}
-              onSelectionChange={updatePossessionSelection}
-            />
+            {!firstHalfStarted ? (
+              <section className="start-match-panel" aria-labelledby="start-match-title">
+                <p className="section-kicker">Start first half</p>
+                <h3 id="start-match-title">Mark kickoff and starting possession</h3>
+                <p className="muted">
+                  Before rating begins, mark the video timestamp where the first half starts and
+                  choose the team with the ball. That team's center is assumed to be in possession.
+                </p>
+                <label>
+                  Team with ball
+                  <select
+                    value={startingPossessionTeam}
+                    onChange={(event) => setStartingPossessionTeam(event.target.value as TeamSide)}
+                  >
+                    <option value="home">{match.homeTeam}</option>
+                    <option value="away">{match.awayTeam}</option>
+                  </select>
+                </label>
+                <button type="button" className="primary-action" onClick={startFirstHalfWithPossession}>
+                  Mark 1H start at {formatClock(currentVideoSeconds)}
+                </button>
+              </section>
+            ) : (
+              <>
+                <PossessionTracker
+                  activePossession={match.activePossession}
+                  currentVideoSeconds={currentVideoSeconds}
+                  durationSeconds={currentVideoDuration}
+                  homeTeam={match.homeTeam}
+                  awayTeam={match.awayTeam}
+                  players={match.players}
+                  selection={match.possessionSelection}
+                  segments={match.possessionSegments}
+                  onSelect={selectPossession}
+                  onSelectionChange={updatePossessionSelection}
+                />
+                <EventCapturePanel
+                  form={eventForm}
+                  homeTeam={match.homeTeam}
+                  awayTeam={match.awayTeam}
+                  players={match.players}
+                  eventRequiredAfterPause={eventRequiredAfterPause}
+                  onChange={(patch) => setEventForm((current) => ({ ...current, ...patch }))}
+                  onSubmit={submitStructuredEvent}
+                />
+              </>
+            )}
           </div>
 
+          {firstHalfStarted ? (
           <div className="sync-column">
             <div className="current-time-card">
               <span>Derived match time</span>
@@ -2140,9 +2239,12 @@ function App() {
               <AnchorRow label="2H end" seconds={match.video.secondHalfEndVideoSeconds} />
             </div>
           </div>
+          ) : null}
         </div>
       </section>
 
+      {firstHalfStarted ? (
+      <>
       <section className="panel setup-panel" aria-labelledby="setup-title">
         <div>
           <p className="section-kicker">Match setup</p>
@@ -2241,16 +2343,6 @@ function App() {
           />
         </label>
       </section>
-
-      <EventCapturePanel
-        form={eventForm}
-        homeTeam={match.homeTeam}
-        awayTeam={match.awayTeam}
-        players={match.players}
-        eventRequiredAfterPause={eventRequiredAfterPause}
-        onChange={(patch) => setEventForm((current) => ({ ...current, ...patch }))}
-        onSubmit={submitStructuredEvent}
-      />
 
       <section className="columns secondary-columns">
         <section className="panel" aria-labelledby="set-piece-title">
@@ -2382,6 +2474,8 @@ function App() {
           </div>
         </section>
       </section>
+      </>
+      ) : null}
 
       {role === "admin" ? (
         <>

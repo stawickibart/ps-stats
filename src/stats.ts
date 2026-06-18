@@ -96,15 +96,14 @@ export const TIME_BUCKETS = [
 ];
 
 export const DEFAULT_PLAYERS: PlayerSlot[] = [
-  { id: "rock-c", name: "Bart", team: "home", role: "Rock C" },
-  { id: "rock-aw", name: "Lola", team: "home", role: "Rock AW" },
-  { id: "rock-dw", name: "Max B", team: "home", role: "Rock DW" },
-  { id: "rock-g", name: "Max Z", team: "home", role: "Rock G" },
-  { id: "rock-flex", name: "Tommy", team: "home", role: "Rock Flex" },
-  { id: "opp-c", name: "Opp C", team: "away", role: "Opp C" },
-  { id: "opp-aw", name: "Opp AW", team: "away", role: "Opp AW" },
-  { id: "opp-dw", name: "Opp DW", team: "away", role: "Opp DW" },
-  { id: "opp-g", name: "Opp G", team: "away", role: "Opp G" },
+  { id: "home-goalie", name: "Home Goalie", team: "home", role: "1 - Goalie" },
+  { id: "home-center", name: "Home Center", team: "home", role: "2 - Center" },
+  { id: "home-near-wing", name: "Home Near Wing", team: "home", role: "3 - Near Wing" },
+  { id: "home-far-wing", name: "Home Far Wing", team: "home", role: "4 - Far Wing" },
+  { id: "away-goalie", name: "Away Goalie", team: "away", role: "1 - Goalie" },
+  { id: "away-center", name: "Away Center", team: "away", role: "2 - Center" },
+  { id: "away-near-wing", name: "Away Near Wing", team: "away", role: "3 - Near Wing" },
+  { id: "away-far-wing", name: "Away Far Wing", team: "away", role: "4 - Far Wing" },
 ];
 
 export const STAT_DEFINITIONS: StatDefinition[] = [
