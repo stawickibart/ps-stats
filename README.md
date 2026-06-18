@@ -5,7 +5,7 @@ A browser-based rater console for collecting power soccer match statistics while
 ## Features
 
 - Editable home/away team names and player/role slots based on the sample spreadsheet layout.
-- One-tap stat entry for the definitions sheet: goals, assists, saves, shots, stops, possession wins/losses, transitions, left/right pass or dribble side, fouls, and 2-on-1s.
+- One-tap stat entry for the definitions sheet: goals, assists, saves, shots, stops, possession wins/losses, transitions, passing/carrying progression, duels, left/right pass or dribble side, fouls, set-piece/penalty outcomes, positioning offenses, and 2-on-1s.
 - 5-minute time buckets plus extra time to match the spreadsheet template.
 - Set-piece tracking with type and 1-5 outcome rating.
 - Tagged notes for additional metrics listed in the definitions tab.
@@ -77,3 +77,7 @@ Open **Stats & plays settings** in the app to:
 - edit play names and links to play art
 
 The default offensive and defensive play names are seeded from the linked Google Slides summaries, with each default pointing back to the relevant slide as its play-art/source link.
+
+## Adapted stat ideas
+
+Additional default stats adapt applicable ideas from the DataMB guide to power soccer, including progressive passes/carries, pass outcomes, key passes, shot assists, interceptions, shot blocks, duels won/lost, fouls suffered, cards, free kicks, penalties, and power-soccer-specific 2-on-1 / goal-area positioning outcomes. Soccer-only concepts such as aerial duels, headed goals, and offsides are intentionally excluded.

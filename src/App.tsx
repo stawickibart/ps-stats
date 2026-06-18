@@ -397,36 +397,139 @@ function calculateRatings(
   const goals = stats.G ?? 0;
   const assists = stats.A ?? 0;
   const shots = stats.Sh ?? 0;
+  const shotsOnTarget = stats.SoT ?? 0;
   const opportunities = stats.Op ?? 0;
+  const keyPasses = stats.KP ?? 0;
+  const shotAssists = stats.ShA ?? 0;
+  const preAssists = stats.PreA ?? 0;
+  const progressivePasses = stats.ProgP ?? 0;
+  const progressiveCarries = stats.ProgC ?? 0;
+  const successfulDribbles = stats.DrbS ?? 0;
+  const offensiveDuelsWon = stats.ODw ?? 0;
+  const touchesInGoalArea = stats.TGA ?? 0;
+  const penaltyGoals = stats.PKG ?? 0;
+  const directFreeKicks = stats.DFK ?? 0;
+  const corners = stats.CK ?? 0;
   const saves = stats.Sv ?? 0;
   const stops = stats.St ?? 0;
+  const interceptions = stats.Int ?? 0;
+  const shotBlocks = stats.Blk ?? 0;
+  const defensiveDuelsWon = stats.DDw ?? 0;
+  const twoOnOnesForced = stats["2o1F"] ?? 0;
   const wonPossession = stats.Wp ?? 0;
+  const touches = stats.Tch ?? 0;
+  const passesAttempted = stats.Pas ?? 0;
+  const passesCompleted = stats.Pc ?? 0;
+  const forwardPasses = stats.FwdP ?? 0;
+  const backwardPasses = stats.BwdP ?? 0;
+  const passesReceived = stats.Rec ?? 0;
+  const misplacedPasses = stats.Mp ?? 0;
+  const dribbleAttempts = stats.DrbA ?? 0;
+  const duelsLost = stats.DuL ?? 0;
+  const freeKicksWon = stats.FKW ?? 0;
+  const indirectFreeKicks = stats.IFK ?? 0;
+  const kickIns = stats.KI ?? 0;
+  const goalKicks = stats.GK ?? 0;
   const positiveTransitions = stats["+"] ?? 0;
   const negativeTransitions = stats["-"] ?? 0;
   const lostPossession = stats.Lp ?? 0;
   const wastedOpportunities = stats.Wo ?? 0;
   const errors = stats.Er ?? 0;
   const fouls = stats.Fl ?? 0;
+  const yellowCards = stats.YC ?? 0;
+  const redCards = stats.RC ?? 0;
+  const twoOnOnesCommitted = stats["2o1C"] ?? 0;
+  const goalAreaPositioning = stats.GAP ?? 0;
+  const dogso = stats.DOGSO ?? 0;
   const twoOnOnes = stats["2o1"] ?? stats["2on1"] ?? 0;
   const goalsAgainst = context?.goalsAgainst ?? 0;
   const possessionShare = context?.possessionShare ?? 0;
   const playStyleCount = context?.playStyleCount ?? 0;
   const playStyleDiversity = context?.playStyleDiversity ?? 0;
 
-  const attack = clampScore(45 + goals * 10 + assists * 4 + shots * 2 + opportunities * 3 + positiveTransitions - wastedOpportunities * 3);
-  const defense = clampScore(45 + saves * 5 + stops * 4 + wonPossession * 2 - errors * 6 - goalsAgainst * 8);
-  const possession = clampScore(45 + possessionShare * 25 + wonPossession * 3 + positiveTransitions * 2 - lostPossession * 3 - negativeTransitions * 3);
+  const attack = clampScore(
+    45 +
+      goals * 10 +
+      penaltyGoals * 5 +
+      assists * 4 +
+      shots * 1.5 +
+      shotsOnTarget * 3 +
+      opportunities * 3 +
+      keyPasses * 3 +
+      shotAssists * 2 +
+      preAssists * 1.5 +
+      progressivePasses * 1.5 +
+      progressiveCarries * 2 +
+      successfulDribbles * 2 +
+      offensiveDuelsWon * 1.5 +
+      touchesInGoalArea * 1.5 +
+      directFreeKicks +
+      corners * 0.75 +
+      positiveTransitions -
+      wastedOpportunities * 3,
+  );
+  const defense = clampScore(
+    45 +
+      saves * 5 +
+      stops * 4 +
+      interceptions * 3 +
+      shotBlocks * 3 +
+      defensiveDuelsWon * 2 +
+      twoOnOnesForced * 2 +
+      wonPossession * 2 -
+      errors * 6 -
+      goalsAgainst * 8 -
+      goalAreaPositioning * 3,
+  );
+  const possession = clampScore(
+    45 +
+      possessionShare * 25 +
+      wonPossession * 3 +
+      passesCompleted * 0.8 +
+      passesReceived * 0.6 +
+      touches * 0.3 +
+      forwardPasses * 0.8 +
+      backwardPasses * 0.25 +
+      progressivePasses +
+      progressiveCarries +
+      successfulDribbles * 1.5 +
+      freeKicksWon +
+      indirectFreeKicks * 0.4 +
+      kickIns * 0.25 +
+      goalKicks * 0.25 +
+      positiveTransitions * 2 -
+      misplacedPasses * 1.5 -
+      Math.max(0, dribbleAttempts - successfulDribbles) * 1.5 -
+      duelsLost * 1.5 -
+      lostPossession * 3 -
+      negativeTransitions * 3,
+  );
   const playstyle = clampScore(
     45 +
       Math.min(playStyleDiversity, 6) * 5 +
       Math.min(playStyleCount, 12) * 1.5 +
       opportunities * 2 +
+      keyPasses * 2 +
+      progressivePasses * 1.5 +
+      progressiveCarries * 1.5 +
+      forwardPasses * 0.6 +
+      passesAttempted * 0.2 +
+      successfulDribbles +
       positiveTransitions * 2 +
       wonPossession -
       wastedOpportunities * 2 -
       negativeTransitions * 2,
   );
-  const discipline = clampScore(80 - fouls * 5 - twoOnOnes * 3);
+  const discipline = clampScore(
+    80 -
+      fouls * 5 -
+      yellowCards * 8 -
+      redCards * 18 -
+      dogso * 12 -
+      goalAreaPositioning * 5 -
+      twoOnOnes * 3 -
+      twoOnOnesCommitted * 5,
+  );
 
   return {
     attack,
@@ -2301,31 +2404,35 @@ const RATING_DIMENSIONS: Array<{
     key: "attack",
     label: "Offensive capability",
     shortLabel: "Offense",
-    description: "Goals, assists, shots, opportunities, and positive transitions minus wasted chances.",
+    description:
+      "Goals, assists, shots on target, opportunities, key passes, shot assists, progressive passes/carries, successful dribbles, and dangerous set pieces minus wasted chances.",
   },
   {
     key: "defense",
     label: "Defensive capability",
     shortLabel: "Defense",
-    description: "Saves, defensive stops, possession wins, and goals prevented minus errors/goals against.",
+    description:
+      "Saves, defensive stops, interceptions, shot blocks, defensive duels won, possession wins, and forced 2-on-1s minus errors, goals against, and goal-area positioning offenses.",
   },
   {
     key: "possession",
     label: "Possession control",
     shortLabel: "Poss.",
-    description: "Tagged possession share, possession wins, positive transitions, and avoiding lost/negative transitions.",
+    description:
+      "Tagged possession share, completed/received passes, touches, forward/progressive actions, successful dribbles, and restarts won minus misplaced passes, failed dribbles, duel losses, and lost/negative transitions.",
   },
   {
     key: "playstyle",
     label: "Playstyle execution",
     shortLabel: "Style",
-    description: "Play-tag diversity and volume for teams, plus opportunity/transition patterns for all records.",
+    description:
+      "Play-tag diversity and volume for teams, plus forward passing, progressive actions, dribble usage, opportunity creation, and transition patterns.",
   },
   {
     key: "discipline",
     label: "Discipline",
     shortLabel: "Disc.",
-    description: "Avoiding fouls and 2-on-1s.",
+    description: "Avoiding fouls, cards, DOGSO, 2-on-1 committed calls, and goal-area positioning offenses.",
   },
 ];
 
