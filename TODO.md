@@ -18,3 +18,4 @@
 - Initial play type should always be set piece/kick off
 - The current location/type of event should be inferred from the end point of the prior event/needs some logic
 - the timing window in the rater console is duplicative/convoluted, there only needs to be one event you need to mark at a time and all other boxes can go away
+- don't need timing info in match setup details
