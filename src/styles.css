@@ -771,6 +771,14 @@ td:first-child {
   gap: 1rem;
 }
 
+.setup-summary-panel,
+.court-summary-card {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .setup-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -806,11 +814,37 @@ td:first-child {
   gap: 1rem;
 }
 
+.quick-event-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.quick-event-button {
+  min-height: 54px;
+  font-weight: 900;
+}
+
+.quick-event-button.active {
+  border-color: var(--primary);
+  background: #e9f0ff;
+  color: var(--primary-dark);
+}
+
 .event-step-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.85rem;
   align-items: end;
+}
+
+.event-player-panel {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px solid #d8e4f1;
+  border-radius: 18px;
+  background: #fbfdff;
 }
 
 .event-required-banner {
@@ -1399,6 +1433,7 @@ td:first-child {
   .performance-layout,
   .event-step-grid,
   .court-picker-layout,
+  .quick-event-grid,
   .play-controls,
   .settings-grid {
     grid-template-columns: 1fr;
@@ -1436,6 +1471,11 @@ td:first-child {
   }
 
   .section-heading-row {
+    display: grid;
+  }
+
+  .setup-summary-panel,
+  .court-summary-card {
     display: grid;
   }
 }

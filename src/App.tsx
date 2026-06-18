@@ -67,7 +67,7 @@ type AppNotice = {
   message: string;
 };
 
-type StructuredEventType = "pass" | "dribble" | "shot" | "engagement" | "turnover" | "note";
+type StructuredEventType = "" | "pass" | "dribble" | "shot" | "engagement" | "turnover" | "note";
 
 type StructuredEventForm = {
   type: StructuredEventType;
@@ -187,12 +187,12 @@ function defaultPossessionSelection(_players: PlayerSlot[]): PossessionSelection
 
 function defaultStructuredEventForm(): StructuredEventForm {
   return {
-    type: "pass",
+    type: "",
     team: "home",
     primaryPlayerId: "",
     secondaryPlayerId: "",
     opponentPlayerId: "",
-    outcome: "completed",
+    outcome: "",
     direction: "",
     fieldDepth: "mid court",
     fieldLane: "middle",
@@ -1151,6 +1151,10 @@ function App() {
   const [playType, setPlayType] = useState<PlayType>("offense");
   const [selectedPlayId, setSelectedPlayId] = useState(DEFAULT_PLAYS[0].id);
   const [eventForm, setEventForm] = useState<StructuredEventForm>(() => defaultStructuredEventForm());
+  const [showVideoSyncDetails, setShowVideoSyncDetails] = useState(true);
+  const [showMatchSetupDetails, setShowMatchSetupDetails] = useState(false);
+  const [showPlayTagging, setShowPlayTagging] = useState(false);
+  const [showAdvancedTags, setShowAdvancedTags] = useState(false);
   const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
   const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
   const [eventRequiredAfterPause, setEventRequiredAfterPause] = useState(false);
@@ -1169,6 +1173,11 @@ function App() {
     [currentVideoSeconds, match.video],
   );
   const firstHalfStarted = match.video.firstHalfStartVideoSeconds !== undefined;
+  const videoSyncComplete =
+    match.video.firstHalfStartVideoSeconds !== undefined &&
+    match.video.firstHalfEndVideoSeconds !== undefined &&
+    match.video.secondHalfStartVideoSeconds !== undefined &&
+    match.video.secondHalfEndVideoSeconds !== undefined;
 
   const notify = useCallback((tone: NoticeTone, title: string, message: string) => {
     const id = createEventId();
@@ -1696,6 +1705,10 @@ function App() {
   };
 
   const submitStructuredEvent = () => {
+    if (!eventForm.type) {
+      notify("error", "Choose event type", "Select what happened before recording the event.");
+      return;
+    }
     const primary = match.players.find((player) => player.id === eventForm.primaryPlayerId);
     const secondary = match.players.find((player) => player.id === eventForm.secondaryPlayerId);
     const opponent = match.players.find((player) => player.id === eventForm.opponentPlayerId);
@@ -1870,6 +1883,13 @@ function App() {
         ? trimPossessionSegmentsAfter(current.possessionSegments, currentVideoSeconds)
         : current.possessionSegments,
     }));
+    if ((owner === "home" || owner === "away") && participants?.ids[0]) {
+      setEventForm((current) => ({
+        ...current,
+        team: owner,
+        primaryPlayerId: participants.ids[0],
+      }));
+    }
     previousPossessionVideoSeconds.current = currentVideoSeconds;
   };
 
@@ -1901,6 +1921,14 @@ function App() {
         ? trimPossessionSegmentsAfter(current.possessionSegments, currentVideoSeconds)
         : current.possessionSegments,
     }));
+    const participants = resolvePossessionParticipants(match.activePossession, nextSelection, match.players);
+    if ((match.activePossession === "home" || match.activePossession === "away") && participants?.ids[0]) {
+      setEventForm((current) => ({
+        ...current,
+        team: match.activePossession as TeamSide,
+        primaryPlayerId: participants.ids[0],
+      }));
+    }
     previousPossessionVideoSeconds.current = currentVideoSeconds;
   };
 
@@ -2456,6 +2484,22 @@ function App() {
 
           {firstHalfStarted ? (
           <div className="sync-column">
+            {videoSyncComplete && !showVideoSyncDetails ? (
+              <section className="current-time-card">
+                <span>Video sync complete</span>
+                <strong>{derivedVideoTime.minute}</strong>
+                <p>
+                  1H {formatClock(match.video.firstHalfStartVideoSeconds ?? 0)}-
+                  {formatClock(match.video.firstHalfEndVideoSeconds ?? 0)} / 2H{" "}
+                  {formatClock(match.video.secondHalfStartVideoSeconds ?? 0)}-
+                  {formatClock(match.video.secondHalfEndVideoSeconds ?? 0)}
+                </p>
+                <button type="button" onClick={() => setShowVideoSyncDetails(true)}>
+                  Edit sync
+                </button>
+              </section>
+            ) : (
+            <>
             <div className="current-time-card">
               <span>Derived match time</span>
               <strong>{derivedVideoTime.minute}</strong>
@@ -2538,6 +2582,13 @@ function App() {
               <AnchorRow label="2H start" seconds={match.video.secondHalfStartVideoSeconds} />
               <AnchorRow label="2H end" seconds={match.video.secondHalfEndVideoSeconds} />
             </div>
+            {videoSyncComplete ? (
+              <button type="button" onClick={() => setShowVideoSyncDetails(false)}>
+                Collapse sync controls
+              </button>
+            ) : null}
+            </>
+            )}
           </div>
           ) : null}
         </div>
@@ -2545,6 +2596,23 @@ function App() {
 
       {firstHalfStarted ? (
       <>
+      {!showMatchSetupDetails ? (
+        <section className="panel setup-summary-panel">
+          <div>
+            <p className="section-kicker">Match setup</p>
+            <h2>
+              {match.homeTeam} vs {match.awayTeam}
+            </h2>
+            <p className="muted">
+              {match.gameDate} / {match.gameLocation || "No location"} / Divisions {match.homeDivision}-
+              {match.awayDivision}
+            </p>
+          </div>
+          <button type="button" onClick={() => setShowMatchSetupDetails(true)}>
+            Edit match setup
+          </button>
+        </section>
+      ) : (
       <section className="panel setup-panel" aria-labelledby="setup-title">
         <div>
           <p className="section-kicker">Match setup</p>
@@ -2650,9 +2718,14 @@ function App() {
             placeholder="Optional: used for string/decimal/time stats; integer stats default to 1"
           />
         </label>
+        <button type="button" onClick={() => setShowMatchSetupDetails(false)}>
+          Collapse match setup
+        </button>
       </section>
+      )}
 
       <section className="columns secondary-columns">
+        {eventForm.eventSource === "set-piece" ? (
         <section className="panel" aria-labelledby="set-piece-title">
           <p className="section-kicker">Set pieces</p>
           <h2 id="set-piece-title">Record set-piece result</h2>
@@ -2706,7 +2779,20 @@ function App() {
             ))}
           </div>
         </section>
+        ) : null}
 
+        {eventForm.eventSource === "set-piece" && !showPlayTagging ? (
+          <section className="panel play-tag-panel">
+            <p className="section-kicker">Play tagging</p>
+            <h2>Did the team play change?</h2>
+            <p className="muted">Plays are tagged only for set-piece situations.</p>
+            <button type="button" className="primary-action" onClick={() => setShowPlayTagging(true)}>
+              Team play changed
+            </button>
+          </section>
+        ) : null}
+
+        {eventForm.eventSource === "set-piece" && showPlayTagging ? (
         <section className="panel play-tag-panel" aria-labelledby="play-tag-title">
           <p className="section-kicker">Play tagging</p>
           <h2 id="play-tag-title">Tag team play</h2>
@@ -2764,11 +2850,24 @@ function App() {
           ) : (
             <p className="empty-state">No active {playType} plays. Add one in settings.</p>
           )}
+          <button type="button" onClick={() => setShowPlayTagging(false)}>
+            Hide play tagging
+          </button>
         </section>
+        ) : null}
 
         <section className="panel" aria-labelledby="advanced-title">
           <p className="section-kicker">Extra tags</p>
-          <h2 id="advanced-title">Capture advanced observations</h2>
+          <h2 id="advanced-title">Advanced observations</h2>
+          {!showAdvancedTags ? (
+            <>
+              <p className="muted">Use these lower-frequency tags when an event needs extra classification.</p>
+              <button type="button" onClick={() => setShowAdvancedTags(true)}>
+                Show advanced tags
+              </button>
+            </>
+          ) : (
+            <>
           <p className="muted">
             The definitions tab lists these additional metrics without abbreviations. Use them as
             tagged notes when the rater needs to preserve context for later review.
@@ -2780,6 +2879,11 @@ function App() {
               </button>
             ))}
           </div>
+              <button type="button" onClick={() => setShowAdvancedTags(false)}>
+                Hide advanced tags
+              </button>
+            </>
+          )}
         </section>
       </section>
       </>
@@ -3288,7 +3392,7 @@ function EventLog({ events, title, description, teamName, onDelete, onReset }: E
   );
 }
 
-const EVENT_TYPE_OPTIONS: Array<{ value: StructuredEventType; label: string }> = [
+const EVENT_TYPE_OPTIONS: Array<{ value: Exclude<StructuredEventType, "">; label: string }> = [
   { value: "pass", label: "Pass" },
   { value: "dribble", label: "Dribble / carry" },
   { value: "shot", label: "Shot" },
@@ -3315,7 +3419,7 @@ const FIELD_LANE_OPTIONS = [
   { value: "right sideline", label: "Right sideline" },
 ];
 
-const OUTCOME_OPTIONS: Record<StructuredEventType, Array<{ value: string; label: string }>> = {
+const OUTCOME_OPTIONS: Record<Exclude<StructuredEventType, "">, Array<{ value: string; label: string }>> = {
   pass: [
     { value: "completed", label: "Completed" },
     { value: "misplaced", label: "Misplaced" },
@@ -3564,9 +3668,10 @@ function EventCapturePanel({
   onChange,
   onSubmit,
 }: EventCapturePanelProps) {
+  const [showCourtMap, setShowCourtMap] = useState(false);
   const teamPlayers = players.filter((player) => player.team === form.team);
   const opponentPlayers = players.filter((player) => player.team !== form.team);
-  const outcomeOptions = OUTCOME_OPTIONS[form.type];
+  const outcomeOptions = form.type ? OUTCOME_OPTIONS[form.type] : [];
   const needsReceiver = form.type === "pass" || form.type === "shot";
   const needsOpponent =
     form.type === "shot" && ["saved", "blocked"].includes(form.outcome);
@@ -3587,13 +3692,38 @@ function EventCapturePanel({
           Required after pause: log at least one event here before the video can resume.
         </p>
       ) : null}
+      <div className="quick-event-grid">
+        {EVENT_TYPE_OPTIONS.filter((option) => option.value).map((option) => (
+          <button
+            type="button"
+            className={form.type === option.value ? "quick-event-button active" : "quick-event-button"}
+            key={option.value}
+            onClick={() =>
+              onChange({
+                type: option.value,
+                outcome: OUTCOME_OPTIONS[option.value][0].value,
+                primaryPlayerId: "",
+                secondaryPlayerId: "",
+                opponentPlayerId: "",
+                direction: "",
+              })
+            }
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {!form.type ? (
+        <p className="empty-state">Choose what happened to reveal the event details.</p>
+      ) : (
+      <>
       <div className="event-step-grid">
         <label>
           1. Event type
           <select
             value={form.type}
             onChange={(event) => {
-              const nextType = event.target.value as StructuredEventType;
+              const nextType = event.target.value as Exclude<StructuredEventType, "">;
               onChange({
                 type: nextType,
                 outcome: OUTCOME_OPTIONS[nextType][0].value,
@@ -3640,7 +3770,25 @@ function EventCapturePanel({
         </label>
       </div>
 
-      <div className="court-picker-layout">
+      {!showCourtMap ? (
+        <div className="court-summary-card">
+          <div>
+            <p className="section-kicker">Court area</p>
+            <strong>
+              {optionLabel(FIELD_DEPTH_OPTIONS, form.fieldDepth)} /{" "}
+              {optionLabel(FIELD_LANE_OPTIONS, form.fieldLane)}
+              {" -> "}
+              {optionLabel(FIELD_DEPTH_OPTIONS, form.fieldEndDepth)} /{" "}
+              {optionLabel(FIELD_LANE_OPTIONS, form.fieldEndLane)}
+            </strong>
+          </div>
+          <button type="button" onClick={() => setShowCourtMap(true)}>
+            Change court area
+          </button>
+        </div>
+      ) : (
+      <>
+        <div className="court-picker-layout">
         <CourtAreaPicker
           title="Event start"
           depth={form.fieldDepth}
@@ -3654,6 +3802,11 @@ function EventCapturePanel({
           onSelect={(fieldEndDepth, fieldEndLane) => onChange({ fieldEndDepth, fieldEndLane })}
         />
       </div>
+      <button type="button" onClick={() => setShowCourtMap(false)}>
+        Collapse court map
+      </button>
+      </>
+      )}
       <div className="event-step-grid">
         <button
           type="button"
@@ -3683,7 +3836,9 @@ function EventCapturePanel({
       </div>
 
       {form.type !== "note" ? (
-        <div className="event-step-grid">
+        <div className="event-player-panel">
+          <p className="section-kicker">Player involvement</p>
+          <div className="event-step-grid">
           <label>
             Primary player
             <select value={form.primaryPlayerId} onChange={(event) => onChange({ primaryPlayerId: event.target.value })}>
@@ -3737,6 +3892,7 @@ function EventCapturePanel({
               </select>
             </label>
           ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -3754,6 +3910,8 @@ function EventCapturePanel({
           Record event
         </button>
       </div>
+      </>
+      )}
     </section>
   );
 }
