@@ -1,5 +1,7 @@
 # TODO
 
+> Note: Items in this file are informational backlog notes only. Ignore them during prompt execution unless a user explicitly asks to work on or reference TODO items.
+
 - create rater burn in/quality tasks and tracking
 - set up db behind all this and figure out where/how to host
 - add accounts/users/profiles with persistent states
