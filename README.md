@@ -19,7 +19,18 @@ A browser-based rater console for collecting power soccer match statistics while
 - Knowledge base for finished games, teams, players, divisions, prior stats, heuristic quality scores, and radar-style capability diagrams.
 - In-app notifications for invalid entries and competing information such as bad stat values, missing possession players, duplicate contested players, or incomplete game metadata.
 
+## Use without running npm locally
+
+The app is configured to deploy as a static GitHub Pages site whenever changes are pushed to `main`.
+After GitHub Pages is enabled for this repository with **GitHub Actions** as the source, use the Pages URL
+from the repository's **Settings -> Pages** screen.
+
+No database, backend server, or local runtime is required to use the hosted app. Browser data is stored in
+the local browser's storage.
+
 ## Run locally
+
+Local commands are only needed if you want to develop or test the app on your machine.
 
 ```bash
 npm install
