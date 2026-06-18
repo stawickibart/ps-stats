@@ -66,7 +66,7 @@ npm test
 1. If you pause the video during match action, the current time-tracking selection is cleared and the paused-video event form becomes required.
 1. If you rewind into already-tagged possession time and choose a different possession or player context, confirm the override before later possession tags are trimmed and replaced.
 1. In the event form, choose what happened first: pass, dribble/carry, shot, engagement/duel, turnover, or note.
-1. Fill in the dynamic details requested for that event, such as passer/receiver, shooter/assistant, defender, direction, outcome, field depth/lane, and whether it came from open play or a set piece.
+1. Fill in the dynamic details requested for that event, such as passer/receiver, shooter/assistant, defender, direction, outcome, start/end court area using the visual court map, and whether it came from open play or a set piece.
 1. Click **Record event**. Before resuming after a pause, log at least one event and then choose a fresh time-tracking state.
 1. Use the play tagging panel to record which offensive or defensive play a team is running.
 1. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.

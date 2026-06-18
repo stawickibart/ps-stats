@@ -72,6 +72,8 @@ export type StatEvent = {
   playArtUrl?: string;
   fieldDepth?: string;
   fieldLane?: string;
+  fieldEndDepth?: string;
+  fieldEndLane?: string;
   eventSource?: "open-play" | "set-piece";
   eventSourceSetPieceCode?: string;
   eventSourceSetPieceLabel?: string;

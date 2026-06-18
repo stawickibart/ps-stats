@@ -756,6 +756,81 @@ td:first-child {
   font-weight: 900;
 }
 
+.court-picker-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.court-picker {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.9rem;
+  border: 1px solid #d8e4f1;
+  border-radius: 18px;
+  background: #fbfdff;
+}
+
+.section-heading-row.compact {
+  align-items: center;
+}
+
+.court-map {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(42px, 1fr));
+  grid-template-rows: repeat(5, 42px);
+  overflow: hidden;
+  border: 3px solid #284466;
+  border-radius: 14px;
+  background:
+    linear-gradient(90deg, transparent calc(50% - 1px), #284466 calc(50% - 1px), #284466 calc(50% + 1px), transparent calc(50% + 1px)),
+    #eef8ff;
+}
+
+.court-cell {
+  min-height: 0;
+  border: 1px solid rgb(40 68 102 / 24%);
+  border-radius: 0;
+  background: rgb(255 255 255 / 42%);
+  color: #243149;
+  font-size: 0.68rem;
+  font-weight: 900;
+  padding: 0.15rem;
+  text-align: center;
+}
+
+.court-cell:hover {
+  transform: none;
+}
+
+.court-cell.goal-area {
+  background: rgb(25 82 209 / 10%);
+}
+
+.court-cell.goal-line {
+  background: rgb(16 42 99 / 16%);
+}
+
+.court-cell.center-line {
+  border-left-color: #102a63;
+  border-right-color: #102a63;
+}
+
+.court-cell.selected {
+  outline: 3px solid #f59e0b;
+  outline-offset: -4px;
+  background: #fff3cd;
+  color: #102a63;
+}
+
+.court-label-row {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
 .columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1250,6 +1325,7 @@ td:first-child {
   .knowledge-layout,
   .performance-layout,
   .event-step-grid,
+  .court-picker-layout,
   .play-controls,
   .settings-grid {
     grid-template-columns: 1fr;

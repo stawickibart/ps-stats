@@ -77,6 +77,8 @@ type StructuredEventForm = {
   direction: "" | "left" | "right";
   fieldDepth: string;
   fieldLane: string;
+  fieldEndDepth: string;
+  fieldEndLane: string;
   eventSource: "open-play" | "set-piece";
   sourceSetPieceCode: string;
   detail: string;
@@ -191,6 +193,8 @@ function defaultStructuredEventForm(): StructuredEventForm {
     direction: "",
     fieldDepth: "mid court",
     fieldLane: "middle",
+    fieldEndDepth: "mid court",
+    fieldEndLane: "middle",
     eventSource: "open-play",
     sourceSetPieceCode: SET_PIECES[0].code,
     detail: "",
@@ -1530,6 +1534,8 @@ function App() {
     const eventMetadata = {
       fieldDepth: eventForm.fieldDepth,
       fieldLane: eventForm.fieldLane,
+      fieldEndDepth: eventForm.fieldEndDepth,
+      fieldEndLane: eventForm.fieldEndLane,
       eventSource: eventForm.eventSource,
       eventSourceSetPieceCode: eventForm.eventSource === "set-piece" ? eventForm.sourceSetPieceCode : undefined,
       eventSourceSetPieceLabel: eventForm.eventSource === "set-piece" ? sourceSetPiece?.label : undefined,
@@ -1744,6 +1750,8 @@ function App() {
         "Play Art URL",
         "Field Depth",
         "Field Lane",
+        "Field End Depth",
+        "Field End Lane",
         "Event Source",
         "Source Set Piece",
         "Note",
@@ -1772,6 +1780,8 @@ function App() {
           event.playArtUrl,
           event.fieldDepth,
           event.fieldLane,
+          event.fieldEndDepth,
+          event.fieldEndLane,
           event.eventSource,
           event.eventSourceSetPieceLabel ?? event.eventSourceSetPieceCode,
           event.note,
@@ -2817,6 +2827,13 @@ function EventLog({ events, title, description, teamName, onDelete, onReset }: E
                     {event.bucket} / {event.minute}
                     {event.half ? ` / ${event.half}` : ""}
                     {event.videoSeconds !== undefined ? ` / video ${formatClock(event.videoSeconds)}` : ""}
+                    {event.fieldDepth && event.fieldLane
+                      ? ` / ${event.fieldDepth} ${event.fieldLane}${
+                          event.fieldEndDepth && event.fieldEndLane
+                            ? ` -> ${event.fieldEndDepth} ${event.fieldEndLane}`
+                            : ""
+                        }`
+                      : ""}
                     {event.statValue ? ` / value ${event.statValue}` : ""}
                     {event.setPieceRating ? ` / outcome ${event.setPieceRating}` : ""}
                     {event.note ? ` - ${event.note}` : ""}
@@ -2849,16 +2866,22 @@ const EVENT_TYPE_OPTIONS: Array<{ value: StructuredEventType; label: string }> =
 ];
 
 const FIELD_DEPTH_OPTIONS = [
-  "own goal-line",
-  "own box",
-  "own above box",
-  "mid court",
-  "opposition above box",
-  "opposition box",
-  "opposition goal line",
+  { value: "own goal-line", label: "Own goal-line" },
+  { value: "own box", label: "Own goal area" },
+  { value: "own above box", label: "Own build-up" },
+  { value: "mid court", label: "Mid court" },
+  { value: "opposition above box", label: "Attacking build-up" },
+  { value: "opposition box", label: "Opp. goal area" },
+  { value: "opposition goal line", label: "Opp. goal-line" },
 ];
 
-const FIELD_LANE_OPTIONS = ["left sideline", "left channel", "middle", "right channel", "right sideline"];
+const FIELD_LANE_OPTIONS = [
+  { value: "left sideline", label: "Left sideline" },
+  { value: "left channel", label: "Left channel" },
+  { value: "middle", label: "Middle" },
+  { value: "right channel", label: "Right channel" },
+  { value: "right sideline", label: "Right sideline" },
+];
 
 const OUTCOME_OPTIONS: Record<StructuredEventType, Array<{ value: string; label: string }>> = {
   pass: [
@@ -2906,6 +2929,73 @@ const OUTCOME_OPTIONS: Record<StructuredEventType, Array<{ value: string; label:
 
 function playerOptionLabel(player: PlayerSlot) {
   return `${player.name} (${player.role})`;
+}
+
+type CourtAreaPickerProps = {
+  title: string;
+  depth: string;
+  lane: string;
+  onSelect: (depth: string, lane: string) => void;
+};
+
+function optionLabel(options: Array<{ value: string; label: string }>, value: string) {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
+
+function CourtAreaPicker({ title, depth, lane, onSelect }: CourtAreaPickerProps) {
+  return (
+    <div className="court-picker">
+      <div className="section-heading-row compact">
+        <div>
+          <p className="section-kicker">{title}</p>
+          <strong>
+            {optionLabel(FIELD_DEPTH_OPTIONS, depth)} / {optionLabel(FIELD_LANE_OPTIONS, lane)}
+          </strong>
+        </div>
+      </div>
+      <div className="court-map" role="grid" aria-label={`${title} court selector`}>
+        {FIELD_DEPTH_OPTIONS.map((depthOption, depthIndex) =>
+          FIELD_LANE_OPTIONS.map((laneOption, laneIndex) => {
+            const isSelected = depth === depthOption.value && lane === laneOption.value;
+            const isGoalArea =
+              depthOption.value === "own box" || depthOption.value === "opposition box";
+            const isGoalLine =
+              depthOption.value === "own goal-line" || depthOption.value === "opposition goal line";
+            const isCenter = depthOption.value === "mid court";
+            return (
+              <button
+                type="button"
+                className={[
+                  "court-cell",
+                  isSelected ? "selected" : "",
+                  isGoalArea ? "goal-area" : "",
+                  isGoalLine ? "goal-line" : "",
+                  isCenter ? "center-line" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                key={`${depthOption.value}-${laneOption.value}`}
+                onClick={() => onSelect(depthOption.value, laneOption.value)}
+                style={{
+                  gridColumn: depthIndex + 1,
+                  gridRow: laneIndex + 1,
+                }}
+                aria-label={`${depthOption.label}, ${laneOption.label}`}
+                title={`${depthOption.label}, ${laneOption.label}`}
+              >
+                {laneOption.value === "middle" ? depthOption.label : ""}
+              </button>
+            );
+          }),
+        )}
+      </div>
+      <div className="court-label-row">
+        <span>Own goal</span>
+        <span>Attack direction</span>
+        <span>Opposition goal</span>
+      </div>
+    </div>
+  );
 }
 
 function EventCapturePanel({
@@ -2993,27 +3083,27 @@ function EventCapturePanel({
         </label>
       </div>
 
+      <div className="court-picker-layout">
+        <CourtAreaPicker
+          title="Event start"
+          depth={form.fieldDepth}
+          lane={form.fieldLane}
+          onSelect={(fieldDepth, fieldLane) => onChange({ fieldDepth, fieldLane })}
+        />
+        <CourtAreaPicker
+          title="Event end"
+          depth={form.fieldEndDepth}
+          lane={form.fieldEndLane}
+          onSelect={(fieldEndDepth, fieldEndLane) => onChange({ fieldEndDepth, fieldEndLane })}
+        />
+      </div>
       <div className="event-step-grid">
-        <label>
-          Field depth
-          <select value={form.fieldDepth} onChange={(event) => onChange({ fieldDepth: event.target.value })}>
-            {FIELD_DEPTH_OPTIONS.map((option) => (
-              <option value={option} key={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Field lane
-          <select value={form.fieldLane} onChange={(event) => onChange({ fieldLane: event.target.value })}>
-            {FIELD_LANE_OPTIONS.map((option) => (
-              <option value={option} key={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
+        <button
+          type="button"
+          onClick={() => onChange({ fieldEndDepth: form.fieldDepth, fieldEndLane: form.fieldLane })}
+        >
+          Same start/end area
+        </button>
         <label>
           Source
           <select value={form.eventSource} onChange={(event) => onChange({ eventSource: event.target.value as "open-play" | "set-piece" })}>
