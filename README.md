@@ -5,7 +5,7 @@ A browser-based rater console for collecting power soccer match statistics while
 ## Features
 
 - Editable home/away team names and player/role slots based on the sample spreadsheet layout.
-- One-tap stat entry for the definitions sheet: goals, assists, saves, shots, stops, possession wins/losses, transitions, fouls, and 2-on-1s.
+- One-tap stat entry for the definitions sheet: goals, assists, saves, shots, stops, possession wins/losses, transitions, left/right pass or dribble side, fouls, and 2-on-1s.
 - 5-minute time buckets plus extra time to match the spreadsheet template.
 - Set-piece tracking with type and 1-5 outcome rating.
 - Tagged notes for additional metrics listed in the definitions tab.

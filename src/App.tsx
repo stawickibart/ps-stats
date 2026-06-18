@@ -178,12 +178,20 @@ function normalizeStats(stats?: StatDefinition[]) {
     return STAT_DEFINITIONS;
   }
 
-  return stats.map((stat, index) => ({
+  const normalized = stats.map((stat, index) => ({
     ...stat,
     id: stat.id || `${stat.code || "stat"}-${index}`,
     valueType: stat.valueType ?? "integer",
     active: stat.active ?? true,
   }));
+
+  const existingIds = new Set(normalized.map((stat) => stat.id));
+  const existingCodes = new Set(normalized.map((stat) => stat.code));
+  const missingDefaults = STAT_DEFINITIONS.filter(
+    (stat) => !existingIds.has(stat.id) && !existingCodes.has(stat.code),
+  );
+
+  return [...normalized, ...missingDefaults];
 }
 
 function normalizePlays(plays?: PlayDefinition[]) {
