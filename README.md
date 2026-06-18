@@ -77,6 +77,8 @@ npm test
 1. Substitution is an event template available from uncommon/advanced event types and is only valid while the ball is out of play.
 1. Fill in the dynamic details requested for that event, such as passer/receiver, shooter/assistant, defender, direction, outcome, start/end court area using the visual court map, and whether it came from open play or a set piece.
 1. Click **Record event**. Before resuming after a pause, log at least one event and then choose a fresh time-tracking state.
+1. Review the event confirmation panel. When you click **Confirm & resume video**, the event is saved and playback resumes automatically.
+1. If match-action video plays for 5 seconds without a recorded event, the app pauses and asks the rater to confirm that nothing of note happened. This check is skipped while the ball is out of play.
 1. Use the play tagging panel to record which offensive or defensive play a team is running.
 1. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.
 1. When the ball is out of play, use the substitution panel to replace an active player with a substitute. Subsequent tagging uses the updated active players.

@@ -374,6 +374,24 @@ td:first-child {
   padding: clamp(1rem, 2vw, 1.5rem);
 }
 
+.flow-section {
+  transition:
+    opacity 160ms ease,
+    filter 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.flow-section.active {
+  box-shadow:
+    0 0 0 3px rgb(25 82 209 / 14%),
+    0 18px 45px rgb(42 62 92 / 8%);
+}
+
+.flow-section.dimmed {
+  filter: grayscale(0.25);
+  opacity: 0.48;
+}
+
 .video-sync-panel {
   display: grid;
   gap: 1rem;
@@ -919,6 +937,25 @@ td:first-child {
   background: #fffbf0;
   color: #7a4a04;
   font-weight: 900;
+}
+
+.event-confirmation-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.confirmation-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.confirmation-row {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #d8e4f1;
+  border-radius: 12px;
+  background: #fbfdff;
+  color: #33445d;
+  font-weight: 800;
 }
 
 .court-picker-layout {

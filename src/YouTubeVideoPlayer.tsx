@@ -5,9 +5,12 @@ type YouTubePlayerProps = {
   videoId: string;
   currentVideoSeconds: number;
   canPlay: boolean;
+  playRequestId: number;
+  pauseRequestId: number;
   onTimeChange: (seconds: number) => void;
   onDurationChange: (seconds: number) => void;
   onPlaybackBlocked: () => void;
+  onPlayingChange: (isPlaying: boolean) => void;
   onUserPause: () => void;
 };
 
@@ -69,14 +72,18 @@ export function YouTubeVideoPlayer({
   videoId,
   currentVideoSeconds,
   canPlay,
+  playRequestId,
+  pauseRequestId,
   onTimeChange,
   onDurationChange,
   onPlaybackBlocked,
+  onPlayingChange,
   onUserPause,
 }: YouTubePlayerProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
   const canPlayRef = useRef(canPlay);
+  const onPlayingChangeRef = useRef(onPlayingChange);
   const onPlaybackBlockedRef = useRef(onPlaybackBlocked);
   const onUserPauseRef = useRef(onUserPause);
   const wasPlayingRef = useRef(false);
@@ -86,9 +93,10 @@ export function YouTubeVideoPlayer({
 
   useEffect(() => {
     canPlayRef.current = canPlay;
+    onPlayingChangeRef.current = onPlayingChange;
     onPlaybackBlockedRef.current = onPlaybackBlocked;
     onUserPauseRef.current = onUserPause;
-  }, [canPlay, onPlaybackBlocked, onUserPause]);
+  }, [canPlay, onPlaybackBlocked, onPlayingChange, onUserPause]);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,11 +131,13 @@ export function YouTubeVideoPlayer({
                 return;
               }
               setIsPlaying(true);
+              onPlayingChangeRef.current(true);
               wasPlayingRef.current = true;
             }
 
             if (event.data === 2) {
               setIsPlaying(false);
+              onPlayingChangeRef.current(false);
               if (suppressNextPauseRef.current) {
                 suppressNextPauseRef.current = false;
                 wasPlayingRef.current = false;
@@ -150,6 +160,25 @@ export function YouTubeVideoPlayer({
       playerRef.current = null;
     };
   }, [videoId]);
+
+  useEffect(() => {
+    if (!ready || !playRequestId) {
+      return;
+    }
+    if (!canPlayRef.current) {
+      onPlaybackBlockedRef.current();
+      return;
+    }
+    playerRef.current?.playVideo();
+  }, [playRequestId, ready]);
+
+  useEffect(() => {
+    if (!ready || !pauseRequestId) {
+      return;
+    }
+    suppressNextPauseRef.current = true;
+    playerRef.current?.pauseVideo();
+  }, [pauseRequestId, ready]);
 
   useEffect(() => {
     if (!ready) {

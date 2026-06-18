@@ -99,6 +99,14 @@ type StructuredEventForm = {
   detail: string;
 };
 
+type PendingStructuredEvent = {
+  events: Array<Omit<StatEvent, "id" | "bucket" | "minute" | "note" | "recordedAt">>;
+  note: string;
+  summary: string[];
+};
+
+type RaterFlowStep = "setup" | "ready" | "playing" | "event-entry" | "event-confirm";
+
 type PossessionSelection = {
   homePlayerId: string;
   awayPlayerId: string;
@@ -1170,6 +1178,10 @@ function App() {
   const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
   const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
   const [eventRequiredAfterPause, setEventRequiredAfterPause] = useState(false);
+  const [pendingStructuredEvent, setPendingStructuredEvent] = useState<PendingStructuredEvent | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [playRequestId, setPlayRequestId] = useState(0);
+  const [pauseRequestId, setPauseRequestId] = useState(0);
   const previousPossessionVideoSeconds = useRef(0);
 
   const onVideoTimeChange = useCallback((seconds: number) => {
@@ -1297,6 +1309,15 @@ function App() {
   }, [activePossessionParticipants, eventRequiredAfterPause, isCalibrationPlaybackAllowed, match.activePossession]);
 
   const canPlayVideo = playbackBlockReason === "";
+  const raterFlowStep: RaterFlowStep = !firstHalfStarted
+    ? "setup"
+    : pendingStructuredEvent
+      ? "event-confirm"
+      : eventRequiredAfterPause
+        ? "event-entry"
+        : isVideoPlaying
+          ? "playing"
+          : "ready";
 
   const topPlaybackMessage = isCalibrationPlaybackAllowed
     ? match.video.firstHalfStartVideoSeconds === undefined
@@ -1325,6 +1346,45 @@ function App() {
       setSelectedPlayId(activePlays[0].id);
     }
   }, [activePlays, selectedPlayId]);
+
+  useEffect(() => {
+    if (
+      !isVideoPlaying ||
+      isCalibrationPlaybackAllowed ||
+      match.activePossession === "out" ||
+      eventRequiredAfterPause ||
+      pendingStructuredEvent
+    ) {
+      return;
+    }
+
+    const eventCountAtStart = match.events.length;
+    const timeoutId = window.setTimeout(() => {
+      if (match.events.length !== eventCountAtStart) {
+        return;
+      }
+      setPauseRequestId((current) => current + 1);
+      window.setTimeout(() => {
+        const nothingHappened = window.confirm("No event has been recorded for 5 seconds. Did nothing of note happen?");
+        if (nothingHappened) {
+          setPlayRequestId((current) => current + 1);
+          return;
+        }
+        setEventRequiredAfterPause(true);
+        notify("warning", "Event needed", "Record the event that happened before resuming.");
+      }, 250);
+    }, 5000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    eventRequiredAfterPause,
+    isCalibrationPlaybackAllowed,
+    isVideoPlaying,
+    match.activePossession,
+    match.events.length,
+    notify,
+    pendingStructuredEvent,
+  ]);
 
   useEffect(() => {
     const previousSeconds = previousPossessionVideoSeconds.current;
@@ -1923,23 +1983,47 @@ function App() {
       ? `${eventForm.detail || match.note} [Advanced: ${eventForm.advancedTags.join(", ")}]`
       : eventForm.detail || match.note;
 
-    addStructuredEvents(
-      events.map((event) => ({
-        ...event,
-        ...eventMetadata,
-      })),
-      advancedNote,
-    );
+    const eventsWithMetadata = events.map((event) => ({
+      ...event,
+      ...eventMetadata,
+    }));
+    setPendingStructuredEvent({
+      events: eventsWithMetadata,
+      note: advancedNote,
+      summary: [
+        `Type: ${EVENT_TYPE_OPTIONS.find((option) => option.value === eventForm.type)?.label ?? eventForm.type}`,
+        `Outcome: ${OUTCOME_OPTIONS[eventForm.type]?.find((option) => option.value === eventForm.outcome)?.label ?? eventForm.outcome}`,
+        `Team: ${eventForm.team === "home" ? match.homeTeam : match.awayTeam}`,
+        `Location: ${eventForm.fieldDepth} ${eventForm.fieldLane} -> ${eventForm.fieldEndDepth} ${eventForm.fieldEndLane}`,
+        eventForm.eventSource === "set-piece"
+          ? `Source: set piece (${sourceSetPiece?.label ?? eventForm.sourceSetPieceCode})`
+          : "Source: open play",
+        `Stats to record: ${eventsWithMetadata
+          .map((event) => event.statLabel ?? event.setPieceLabel ?? event.playName ?? event.kind)
+          .join(", ")}`,
+        advancedNote ? `Note: ${advancedNote}` : "",
+      ].filter(Boolean),
+    });
+  };
+
+  const confirmStructuredEvent = () => {
+    if (!pendingStructuredEvent) {
+      return;
+    }
+    addStructuredEvents(pendingStructuredEvent.events, pendingStructuredEvent.note);
+    setPendingStructuredEvent(null);
     setEventForm((current) => ({
       ...defaultStructuredEventForm(),
       team: current.team,
+      primaryPlayerId: current.primaryPlayerId,
     }));
-    setMatch((current) => ({
-      ...current,
-      activePossession: "unset",
-      possessionSelection: defaultPossessionSelection(current.players),
-    }));
-    notify("success", "Event recorded", "The event details were converted into stat entries.");
+    notify("success", "Event recorded", "The event details were confirmed and saved.");
+    window.setTimeout(() => setPlayRequestId((current) => current + 1), 100);
+  };
+
+  const cancelStructuredEventConfirmation = () => {
+    setPendingStructuredEvent(null);
+    notify("info", "Review canceled", "Edit the event details, then record it again.");
   };
 
   const selectPossession = (owner: PossessionOwner) => {
@@ -2034,16 +2118,11 @@ function App() {
     }
 
     setEventRequiredAfterPause(true);
-    setMatch((current) => ({
-      ...current,
-      activePossession: "unset",
-      possessionSelection: defaultPossessionSelection(current.players),
-    }));
     previousPossessionVideoSeconds.current = currentVideoSeconds;
     notify(
       "warning",
       "Video paused",
-      "Time-tracking selections were cleared. Log at least one event and choose the next time-tracking state before resuming.",
+      "Log the event that just happened, confirm it, and the video will resume automatically.",
     );
   };
 
@@ -2442,7 +2521,14 @@ function App() {
         <TaggedGameViewPage knowledgeBase={match.knowledgeBase} teamName={teamName} />
       ) : (
         <>
-      <section className="panel video-sync-panel" aria-labelledby="video-title">
+      <section
+        className={
+          raterFlowStep === "playing" || raterFlowStep === "setup" || raterFlowStep === "ready"
+            ? "panel video-sync-panel flow-section active"
+            : "panel video-sync-panel flow-section dimmed"
+        }
+        aria-labelledby="video-title"
+      >
         {firstHalfStarted ? (
         <div className="section-heading-row">
           <div>
@@ -2483,9 +2569,12 @@ function App() {
               videoId={match.video.videoId}
               currentVideoSeconds={currentVideoSeconds}
               canPlay={canPlayVideo}
+              playRequestId={playRequestId}
+              pauseRequestId={pauseRequestId}
               onTimeChange={onVideoTimeChange}
               onDurationChange={onVideoDurationChange}
               onPlaybackBlocked={handlePlaybackBlocked}
+              onPlayingChange={setIsVideoPlaying}
               onUserPause={handleVideoPause}
             />
             {firstHalfStarted && playbackBlockReason ? (
@@ -2578,9 +2667,17 @@ function App() {
                   players={match.players}
                   plays={match.plays}
                   eventRequiredAfterPause={eventRequiredAfterPause}
+                  active={raterFlowStep === "event-entry"}
                   onChange={(patch) => setEventForm((current) => ({ ...current, ...patch }))}
                   onSubmit={submitStructuredEvent}
                 />
+                {pendingStructuredEvent ? (
+                  <EventConfirmationPanel
+                    pendingEvent={pendingStructuredEvent}
+                    onConfirm={confirmStructuredEvent}
+                    onCancel={cancelStructuredEventConfirmation}
+                  />
+                ) : null}
               </>
             )}
           </div>
@@ -2963,8 +3060,15 @@ type EventCapturePanelProps = {
   players: PlayerSlot[];
   plays: PlayDefinition[];
   eventRequiredAfterPause: boolean;
+  active: boolean;
   onChange: (patch: Partial<StructuredEventForm>) => void;
   onSubmit: () => void;
+};
+
+type EventConfirmationPanelProps = {
+  pendingEvent: PendingStructuredEvent;
+  onConfirm: () => void;
+  onCancel: () => void;
 };
 
 type RosterSetupPanelProps = {
@@ -3720,6 +3824,7 @@ function EventCapturePanel({
   players,
   plays,
   eventRequiredAfterPause,
+  active,
   onChange,
   onSubmit,
 }: EventCapturePanelProps) {
@@ -3737,7 +3842,10 @@ function EventCapturePanel({
   const setPiecePlays = plays.filter((play) => play.active);
 
   return (
-    <section className="panel event-capture-panel" aria-labelledby="event-capture-title">
+    <section
+      className={active ? "panel event-capture-panel flow-section active" : "panel event-capture-panel flow-section dimmed"}
+      aria-labelledby="event-capture-title"
+    >
       <div>
         <p className="section-kicker">Paused-video event</p>
         <h2 id="event-capture-title">What just happened?</h2>
@@ -4067,6 +4175,33 @@ function EventCapturePanel({
       </div>
       </>
       )}
+    </section>
+  );
+}
+
+function EventConfirmationPanel({ pendingEvent, onConfirm, onCancel }: EventConfirmationPanelProps) {
+  return (
+    <section className="panel event-confirmation-panel flow-section active" aria-label="Confirm event details">
+      <div>
+        <p className="section-kicker">Confirm event</p>
+        <h2>Review before saving</h2>
+        <p className="muted">Confirm these details. Once saved, the video will resume automatically.</p>
+      </div>
+      <div className="confirmation-list">
+        {pendingEvent.summary.map((item) => (
+          <div className="confirmation-row" key={item}>
+            {item}
+          </div>
+        ))}
+      </div>
+      <div className="action-row">
+        <button type="button" className="primary-action" onClick={onConfirm}>
+          Confirm & resume video
+        </button>
+        <button type="button" onClick={onCancel}>
+          Edit event
+        </button>
+      </div>
     </section>
   );
 }
