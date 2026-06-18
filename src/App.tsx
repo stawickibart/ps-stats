@@ -294,19 +294,15 @@ function normalizePlayers(players?: PlayerSlot[]) {
     return DEFAULT_PLAYERS;
   }
 
-  const oldDefaultIds = new Set([
-    "rock-c",
-    "rock-aw",
-    "rock-dw",
-    "rock-g",
-    "rock-flex",
-    "opp-c",
-    "opp-aw",
-    "opp-dw",
-    "opp-g",
-  ]);
+  const hasPreDucksDefaultIds = players.some(
+    (player) =>
+      player.id === "opp-c" ||
+      player.id === "opp-aw" ||
+      player.id === "opp-dw" ||
+      player.id === "opp-g",
+  );
   if (
-    players.some((player) => oldDefaultIds.has(player.id)) ||
+    hasPreDucksDefaultIds ||
     players.some((player) => player.name.startsWith("Home ") || player.name.startsWith("Away "))
   ) {
     return DEFAULT_PLAYERS;
