@@ -4,14 +4,18 @@ import { formatClock } from "./video";
 type YouTubePlayerProps = {
   videoId: string;
   currentVideoSeconds: number;
+  canPlay: boolean;
   onTimeChange: (seconds: number) => void;
   onDurationChange: (seconds: number) => void;
+  onPlaybackBlocked: () => void;
+  onUserPause: () => void;
 };
 
 type YouTubePlayerInstance = {
   destroy: () => void;
   getCurrentTime: () => number;
   getDuration: () => number;
+  pauseVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
 };
 
@@ -22,6 +26,7 @@ type YouTubeConstructor = new (
     playerVars?: Record<string, number>;
     events?: {
       onReady?: () => void;
+      onStateChange?: (event: { data: number }) => void;
     };
   },
 ) => YouTubePlayerInstance;
@@ -62,12 +67,26 @@ function loadYouTubeApi() {
 export function YouTubeVideoPlayer({
   videoId,
   currentVideoSeconds,
+  canPlay,
   onTimeChange,
   onDurationChange,
+  onPlaybackBlocked,
+  onUserPause,
 }: YouTubePlayerProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
+  const canPlayRef = useRef(canPlay);
+  const onPlaybackBlockedRef = useRef(onPlaybackBlocked);
+  const onUserPauseRef = useRef(onUserPause);
+  const wasPlayingRef = useRef(false);
+  const suppressNextPauseRef = useRef(false);
   const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    canPlayRef.current = canPlay;
+    onPlaybackBlockedRef.current = onPlaybackBlocked;
+    onUserPauseRef.current = onUserPause;
+  }, [canPlay, onPlaybackBlocked, onUserPause]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +112,30 @@ export function YouTubeVideoPlayer({
         },
         events: {
           onReady: () => setReady(true),
+          onStateChange: (event) => {
+            if (event.data === 1) {
+              if (!canPlayRef.current) {
+                suppressNextPauseRef.current = true;
+                playerRef.current?.pauseVideo();
+                onPlaybackBlockedRef.current();
+                return;
+              }
+              wasPlayingRef.current = true;
+            }
+
+            if (event.data === 2) {
+              if (suppressNextPauseRef.current) {
+                suppressNextPauseRef.current = false;
+                wasPlayingRef.current = false;
+                return;
+              }
+
+              if (wasPlayingRef.current) {
+                wasPlayingRef.current = false;
+                onUserPauseRef.current();
+              }
+            }
+          },
         },
       });
     });

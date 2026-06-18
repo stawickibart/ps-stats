@@ -43,7 +43,7 @@ type MatchState = {
   video: VideoSyncState;
   statDefinitions: StatDefinition[];
   plays: PlayDefinition[];
-  activePossession: PossessionOwner;
+  activePossession: ActivePossession;
   possessionSelection: PossessionSelection;
   possessionSegments: PossessionSegment[];
   knowledgeBase: KnowledgeBase;
@@ -55,6 +55,7 @@ const STORAGE_KEY = "power-soccer-stat-rater-v1";
 type AppPage = "tracker" | "settings" | "knowledge";
 type StatTotals = Record<string, number>;
 type NoticeTone = "info" | "warning" | "error" | "success";
+type ActivePossession = PossessionOwner | "unset";
 
 type AppNotice = {
   id: string;
@@ -150,15 +151,12 @@ const emptyKnowledgeBase: KnowledgeBase = {
   games: [],
 };
 
-function defaultPossessionSelection(players: PlayerSlot[]): PossessionSelection {
-  const homePlayer = players.find((player) => player.team === "home") ?? players[0];
-  const awayPlayer = players.find((player) => player.team === "away") ?? players.find((player) => player.id !== homePlayer?.id);
-
+function defaultPossessionSelection(_players: PlayerSlot[]): PossessionSelection {
   return {
-    homePlayerId: homePlayer?.id ?? "",
-    awayPlayerId: awayPlayer?.id ?? "",
-    contestedPlayerOneId: homePlayer?.id ?? "",
-    contestedPlayerTwoId: awayPlayer?.id ?? "",
+    homePlayerId: "",
+    awayPlayerId: "",
+    contestedPlayerOneId: "",
+    contestedPlayerTwoId: "",
   };
 }
 
@@ -175,7 +173,7 @@ const initialState: MatchState = {
   video: DEFAULT_VIDEO_SYNC,
   statDefinitions: STAT_DEFINITIONS,
   plays: DEFAULT_PLAYS,
-  activePossession: "contested",
+  activePossession: "unset",
   possessionSelection: defaultPossessionSelection(DEFAULT_PLAYERS),
   possessionSegments: [],
   knowledgeBase: emptyKnowledgeBase,
@@ -244,8 +242,8 @@ function normalizePossessionSelection(selection: PossessionSelection | undefined
   };
 }
 
-function selectedPossessionPlayerIds(owner: PossessionOwner, selection: PossessionSelection) {
-  if (owner === "out") {
+function selectedPossessionPlayerIds(owner: ActivePossession, selection: PossessionSelection) {
+  if (owner === "out" || owner === "unset") {
     return [];
   }
 
@@ -260,16 +258,20 @@ function selectedPossessionPlayerIds(owner: PossessionOwner, selection: Possessi
   return [selection.contestedPlayerOneId, selection.contestedPlayerTwoId].filter(Boolean);
 }
 
-function participantKey(owner: PossessionOwner, selection: PossessionSelection) {
+function participantKey(owner: ActivePossession, selection: PossessionSelection) {
   const ids = selectedPossessionPlayerIds(owner, selection);
   return owner === "contested" ? ids.slice().sort().join("|") : ids.join("|");
 }
 
 function resolvePossessionParticipants(
-  owner: PossessionOwner,
+  owner: ActivePossession,
   selection: PossessionSelection,
   players: PlayerSlot[],
 ) {
+  if (owner === "unset") {
+    return undefined;
+  }
+
   if (owner === "out") {
     return {
       ids: [],
@@ -867,7 +869,7 @@ function readStoredState(): MatchState {
       nextStatValue: parsed.nextStatValue ?? "",
       statDefinitions: normalizeStats(parsed.statDefinitions),
       plays: normalizePlays(parsed.plays),
-      activePossession: parsed.activePossession ?? "contested",
+      activePossession: parsed.activePossession ?? "unset",
       possessionSelection: normalizePossessionSelection(parsed.possessionSelection, players),
       possessionSegments: normalizePossessionSegments(parsed.possessionSegments),
       knowledgeBase: normalizeKnowledgeBase(parsed.knowledgeBase),
@@ -891,6 +893,7 @@ function App() {
   const [selectedPlayId, setSelectedPlayId] = useState(DEFAULT_PLAYS[0].id);
   const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
   const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
+  const [eventRequiredAfterPause, setEventRequiredAfterPause] = useState(false);
   const previousPossessionVideoSeconds = useRef(0);
 
   const onVideoTimeChange = useCallback((seconds: number) => {
@@ -965,6 +968,28 @@ function App() {
     match.possessionSelection.contestedPlayerTwoId,
   ]);
 
+  const activePossessionParticipants = useMemo(
+    () => resolvePossessionParticipants(match.activePossession, match.possessionSelection, match.players),
+    [match.activePossession, match.players, match.possessionSelection],
+  );
+
+  const playbackBlockReason = useMemo(() => {
+    if (eventRequiredAfterPause) {
+      return "Log at least one stat, play, set-piece, or note event before resuming after a pause.";
+    }
+    if (match.activePossession === "unset") {
+      return "Select home possession, away possession, contested possession, or out of play before playing.";
+    }
+    if (!activePossessionParticipants) {
+      return match.activePossession === "contested"
+        ? "Select one home player and one away player for contested possession before playing."
+        : "Select the player in possession before playing.";
+    }
+    return "";
+  }, [activePossessionParticipants, eventRequiredAfterPause, match.activePossession]);
+
+  const canPlayVideo = playbackBlockReason === "";
+
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(match));
   }, [match]);
@@ -997,6 +1022,9 @@ function App() {
     setMatch((current) => ({
       ...current,
       possessionSegments: (() => {
+        if (current.activePossession === "unset") {
+          return current.possessionSegments;
+        }
         const participants = resolvePossessionParticipants(
           current.activePossession,
           current.possessionSelection,
@@ -1179,6 +1207,7 @@ function App() {
   };
 
   const addEvent = (event: Omit<StatEvent, "id" | "bucket" | "minute" | "note" | "recordedAt">) => {
+    setEventRequiredAfterPause(false);
     setMatch((current) => ({
       ...current,
       note: "",
@@ -1273,13 +1302,12 @@ function App() {
     const participants = resolvePossessionParticipants(owner, match.possessionSelection, match.players);
     if (!participants) {
       notify(
-        "error",
-        "Missing possession player",
+        "warning",
+        "Complete possession details",
         owner === "contested"
           ? "Select two different players contesting possession before tracking contested possession."
           : "Select the player in possession before tracking possession.",
       );
-      return;
     }
 
     const willOverrideFuture = match.possessionSegments.some(
@@ -1341,6 +1369,25 @@ function App() {
     previousPossessionVideoSeconds.current = currentVideoSeconds;
   };
 
+  const handleVideoPause = () => {
+    setEventRequiredAfterPause(true);
+    setMatch((current) => ({
+      ...current,
+      activePossession: "unset",
+      possessionSelection: defaultPossessionSelection(current.players),
+    }));
+    previousPossessionVideoSeconds.current = currentVideoSeconds;
+    notify(
+      "warning",
+      "Video paused",
+      "Time-tracking selections were cleared. Log at least one event and choose the next time-tracking state before resuming.",
+    );
+  };
+
+  const handlePlaybackBlocked = () => {
+    notify("error", "Playback blocked", playbackBlockReason || "Complete the required rating fields before playing.");
+  };
+
   const loadVideo = () => {
     const videoId = parseYouTubeVideoId(match.video.videoUrl);
     if (!videoId) {
@@ -1349,6 +1396,7 @@ function App() {
     }
     updateVideo({ videoId });
     setCurrentVideoSeconds(0);
+    setEventRequiredAfterPause(false);
     previousPossessionVideoSeconds.current = 0;
     notify("success", "Video loaded", "Video sync is ready. Confirm the half and boundary anchors before rating.");
   };
@@ -1406,6 +1454,7 @@ function App() {
     setSelectedPlayId(DEFAULT_PLAYS[0].id);
     setCurrentVideoSeconds(0);
     setCurrentVideoDuration(0);
+    setEventRequiredAfterPause(false);
     previousPossessionVideoSeconds.current = 0;
   };
 
@@ -1617,9 +1666,17 @@ function App() {
             <YouTubeVideoPlayer
               videoId={match.video.videoId}
               currentVideoSeconds={currentVideoSeconds}
+              canPlay={canPlayVideo}
               onTimeChange={onVideoTimeChange}
               onDurationChange={onVideoDurationChange}
+              onPlaybackBlocked={handlePlaybackBlocked}
+              onUserPause={handleVideoPause}
             />
+            {playbackBlockReason ? (
+              <p className="playback-gate-message">{playbackBlockReason}</p>
+            ) : (
+              <p className="playback-gate-message ready">Ready to play with current time-tracking state.</p>
+            )}
             <PossessionTracker
               activePossession={match.activePossession}
               currentVideoSeconds={currentVideoSeconds}
@@ -2130,7 +2187,7 @@ function NoticeCenter({ notices, onDismiss }: NoticeCenterProps) {
 }
 
 type PossessionTrackerProps = {
-  activePossession: PossessionOwner;
+  activePossession: ActivePossession;
   currentVideoSeconds: number;
   durationSeconds: number;
   homeTeam: string;
@@ -2142,7 +2199,7 @@ type PossessionTrackerProps = {
   onSelectionChange: (patch: Partial<PossessionSelection>) => void;
 };
 
-function possessionLabel(owner: PossessionOwner, homeTeam: string, awayTeam: string) {
+function possessionLabel(owner: ActivePossession, homeTeam: string, awayTeam: string) {
   if (owner === "home") {
     return homeTeam;
   }
@@ -2151,6 +2208,9 @@ function possessionLabel(owner: PossessionOwner, homeTeam: string, awayTeam: str
   }
   if (owner === "out") {
     return "Out of play";
+  }
+  if (owner === "unset") {
+    return "No selection";
   }
   return "Contested";
 }
@@ -2211,7 +2271,7 @@ function PossessionTracker({
           </button>
         ))}
       </div>
-      {activePossession !== "out" ? (
+      {activePossession !== "out" && activePossession !== "unset" ? (
         <div className="possession-player-grid">
           {activePossession === "home" ? (
             <label>
