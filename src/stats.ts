@@ -70,6 +70,11 @@ export type StatEvent = {
   playName?: string;
   playType?: PlayType;
   playArtUrl?: string;
+  fieldDepth?: string;
+  fieldLane?: string;
+  eventSource?: "open-play" | "set-piece";
+  eventSourceSetPieceCode?: string;
+  eventSourceSetPieceLabel?: string;
   bucket: string;
   minute: string;
   note: string;

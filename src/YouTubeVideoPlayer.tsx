@@ -16,6 +16,7 @@ type YouTubePlayerInstance = {
   getCurrentTime: () => number;
   getDuration: () => number;
   pauseVideo: () => void;
+  playVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
 };
 
@@ -81,6 +82,7 @@ export function YouTubeVideoPlayer({
   const wasPlayingRef = useRef(false);
   const suppressNextPauseRef = useRef(false);
   const [ready, setReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
     canPlayRef.current = canPlay;
@@ -120,10 +122,12 @@ export function YouTubeVideoPlayer({
                 onPlaybackBlockedRef.current();
                 return;
               }
+              setIsPlaying(true);
               wasPlayingRef.current = true;
             }
 
             if (event.data === 2) {
+              setIsPlaying(false);
               if (suppressNextPauseRef.current) {
                 suppressNextPauseRef.current = false;
                 wasPlayingRef.current = false;
@@ -172,6 +176,26 @@ export function YouTubeVideoPlayer({
     onTimeChange(target);
   };
 
+  const play = () => {
+    if (!ready) {
+      return;
+    }
+
+    if (!canPlay) {
+      onPlaybackBlocked();
+      return;
+    }
+
+    playerRef.current?.playVideo();
+  };
+
+  const pause = () => {
+    if (!ready || !isPlaying) {
+      return;
+    }
+    playerRef.current?.pauseVideo();
+  };
+
   if (!videoId) {
     return (
       <div className="video-placeholder">
@@ -184,6 +208,12 @@ export function YouTubeVideoPlayer({
     <div className="video-player-shell">
       <div className="video-frame" ref={hostRef} />
       <div className="video-controls">
+        <button type="button" className="primary-action" onClick={play} disabled={!ready || !canPlay || isPlaying}>
+          Play
+        </button>
+        <button type="button" onClick={pause} disabled={!ready || !isPlaying}>
+          Pause
+        </button>
         <button type="button" onClick={() => seekBy(-10)} disabled={!ready}>
           -10s
         </button>

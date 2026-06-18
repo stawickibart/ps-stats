@@ -74,6 +74,10 @@ type StructuredEventForm = {
   opponentPlayerId: string;
   outcome: string;
   direction: "" | "left" | "right";
+  fieldDepth: string;
+  fieldLane: string;
+  eventSource: "open-play" | "set-piece";
+  sourceSetPieceCode: string;
   detail: string;
 };
 
@@ -182,6 +186,10 @@ function defaultStructuredEventForm(): StructuredEventForm {
     opponentPlayerId: "",
     outcome: "completed",
     direction: "",
+    fieldDepth: "mid court",
+    fieldLane: "middle",
+    eventSource: "open-play",
+    sourceSetPieceCode: SET_PIECES[0].code,
     detail: "",
   };
 }
@@ -1000,7 +1008,14 @@ function App() {
     [match.activePossession, match.players, match.possessionSelection],
   );
 
+  const isCalibrationPlaybackAllowed =
+    match.video.firstHalfStartVideoSeconds === undefined ||
+    (match.video.firstHalfEndVideoSeconds !== undefined && match.video.secondHalfStartVideoSeconds === undefined);
+
   const playbackBlockReason = useMemo(() => {
+    if (isCalibrationPlaybackAllowed) {
+      return "";
+    }
     if (eventRequiredAfterPause) {
       return "Log at least one stat, play, set-piece, or note event before resuming after a pause.";
     }
@@ -1013,9 +1028,17 @@ function App() {
         : "Select the player in possession before playing.";
     }
     return "";
-  }, [activePossessionParticipants, eventRequiredAfterPause, match.activePossession]);
+  }, [activePossessionParticipants, eventRequiredAfterPause, isCalibrationPlaybackAllowed, match.activePossession]);
 
   const canPlayVideo = playbackBlockReason === "";
+
+  const topPlaybackMessage = isCalibrationPlaybackAllowed
+    ? match.video.firstHalfStartVideoSeconds === undefined
+      ? "Calibration mode: video can play freely until you mark where the first half begins."
+      : "Halftime calibration mode: video can play freely until you mark where the second half starts."
+    : canPlayVideo
+      ? "Ready to play: current time-tracking state is complete."
+      : `Required before video can play: ${playbackBlockReason}`;
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(match));
@@ -1386,6 +1409,7 @@ function App() {
     const primary = match.players.find((player) => player.id === eventForm.primaryPlayerId);
     const secondary = match.players.find((player) => player.id === eventForm.secondaryPlayerId);
     const opponent = match.players.find((player) => player.id === eventForm.opponentPlayerId);
+    const sourceSetPiece = SET_PIECES.find((piece) => piece.code === eventForm.sourceSetPieceCode);
     const events: Array<Omit<StatEvent, "id" | "bucket" | "minute" | "note" | "recordedAt">> = [];
     const addStat = (player: PlayerSlot | undefined, statCode: string) => {
       if (!player) {
@@ -1495,7 +1519,21 @@ function App() {
       return;
     }
 
-    addStructuredEvents(events, eventForm.detail || match.note);
+    const eventMetadata = {
+      fieldDepth: eventForm.fieldDepth,
+      fieldLane: eventForm.fieldLane,
+      eventSource: eventForm.eventSource,
+      eventSourceSetPieceCode: eventForm.eventSource === "set-piece" ? eventForm.sourceSetPieceCode : undefined,
+      eventSourceSetPieceLabel: eventForm.eventSource === "set-piece" ? sourceSetPiece?.label : undefined,
+    };
+
+    addStructuredEvents(
+      events.map((event) => ({
+        ...event,
+        ...eventMetadata,
+      })),
+      eventForm.detail || match.note,
+    );
     setEventForm((current) => ({
       ...defaultStructuredEventForm(),
       team: current.team,
@@ -1575,6 +1613,10 @@ function App() {
   };
 
   const handleVideoPause = () => {
+    if (isCalibrationPlaybackAllowed) {
+      return;
+    }
+
     setEventRequiredAfterPause(true);
     setMatch((current) => ({
       ...current,
@@ -1635,6 +1677,14 @@ function App() {
     });
   };
 
+  const markSecondHalfEnd = () => {
+    updateVideo({
+      secondHalfEndVideoSeconds: currentVideoSeconds,
+      secondHalfEndMatchClock:
+        derivedVideoTime.half === "second" ? derivedVideoTime.minute : match.video.secondHalfEndMatchClock,
+    });
+  };
+
   const deleteEvent = (eventId: string) => {
     setMatch((current) => ({
       ...current,
@@ -1684,6 +1734,10 @@ function App() {
         "Set Piece Rating",
         "Play Type",
         "Play Art URL",
+        "Field Depth",
+        "Field Lane",
+        "Event Source",
+        "Source Set Piece",
         "Note",
       ],
       ...match.events
@@ -1708,6 +1762,10 @@ function App() {
           event.setPieceRating,
           event.playType,
           event.playArtUrl,
+          event.fieldDepth,
+          event.fieldLane,
+          event.eventSource,
+          event.eventSourceSetPieceLabel ?? event.eventSourceSetPieceCode,
           event.note,
         ]),
     ]);
@@ -1817,6 +1875,13 @@ function App() {
       </nav>
 
       <NoticeCenter notices={[...notices, ...setupWarnings]} onDismiss={dismissNotice} />
+
+      {page === "tracker" ? (
+        <section className={canPlayVideo ? "playback-readiness ready" : "playback-readiness blocked"}>
+          <strong>{canPlayVideo ? "Video playback ready" : "Video playback blocked"}</strong>
+          <span>{topPlaybackMessage}</span>
+        </section>
+      ) : null}
 
       {page === "settings" ? (
         <StatsSettingsPage
@@ -1948,6 +2013,14 @@ function App() {
                   placeholder="20:00"
                 />
               </label>
+              <label>
+                2nd-half end clock
+                <input
+                  value={match.video.secondHalfEndMatchClock}
+                  onChange={(event) => updateVideo({ secondHalfEndMatchClock: event.target.value })}
+                  placeholder="40:00"
+                />
+              </label>
             </div>
 
             <div className="boundary-actions">
@@ -1960,12 +2033,16 @@ function App() {
               <button type="button" onClick={markSecondHalfStart}>
                 Mark 2H start at {formatClock(currentVideoSeconds)}
               </button>
+              <button type="button" onClick={markSecondHalfEnd}>
+                Mark 2H end at {formatClock(currentVideoSeconds)}
+              </button>
             </div>
 
             <div className="anchor-list">
               <AnchorRow label="1H start" seconds={match.video.firstHalfStartVideoSeconds} />
               <AnchorRow label="1H end" seconds={match.video.firstHalfEndVideoSeconds} />
               <AnchorRow label="2H start" seconds={match.video.secondHalfStartVideoSeconds} />
+              <AnchorRow label="2H end" seconds={match.video.secondHalfEndVideoSeconds} />
             </div>
           </div>
         </div>
@@ -2682,6 +2759,18 @@ const EVENT_TYPE_OPTIONS: Array<{ value: StructuredEventType; label: string }> =
   { value: "note", label: "Other / note" },
 ];
 
+const FIELD_DEPTH_OPTIONS = [
+  "own goal-line",
+  "own box",
+  "own above box",
+  "mid court",
+  "opposition above box",
+  "opposition box",
+  "opposition goal line",
+];
+
+const FIELD_LANE_OPTIONS = ["left sideline", "left channel", "middle", "right channel", "right sideline"];
+
 const OUTCOME_OPTIONS: Record<StructuredEventType, Array<{ value: string; label: string }>> = {
   pass: [
     { value: "completed", label: "Completed" },
@@ -2813,6 +2902,48 @@ function EventCapturePanel({
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="event-step-grid">
+        <label>
+          Field depth
+          <select value={form.fieldDepth} onChange={(event) => onChange({ fieldDepth: event.target.value })}>
+            {FIELD_DEPTH_OPTIONS.map((option) => (
+              <option value={option} key={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Field lane
+          <select value={form.fieldLane} onChange={(event) => onChange({ fieldLane: event.target.value })}>
+            {FIELD_LANE_OPTIONS.map((option) => (
+              <option value={option} key={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Source
+          <select value={form.eventSource} onChange={(event) => onChange({ eventSource: event.target.value as "open-play" | "set-piece" })}>
+            <option value="open-play">Open play</option>
+            <option value="set-piece">Set piece</option>
+          </select>
+        </label>
+        {form.eventSource === "set-piece" ? (
+          <label>
+            Set-piece type
+            <select value={form.sourceSetPieceCode} onChange={(event) => onChange({ sourceSetPieceCode: event.target.value })}>
+              {SET_PIECES.map((piece) => (
+                <option value={piece.code} key={piece.code}>
+                  {piece.code} - {piece.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       {form.type !== "note" ? (

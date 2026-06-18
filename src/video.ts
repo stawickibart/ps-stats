@@ -14,6 +14,8 @@ export type VideoSyncState = {
   firstHalfEndMatchClock: string;
   secondHalfStartVideoSeconds?: number;
   secondHalfStartMatchClock: string;
+  secondHalfEndVideoSeconds?: number;
+  secondHalfEndMatchClock: string;
 };
 
 export type DerivedMatchTime = {
@@ -33,6 +35,7 @@ export const DEFAULT_VIDEO_SYNC: VideoSyncState = {
   firstHalfStartMatchClock: "0:00",
   firstHalfEndMatchClock: "20:00",
   secondHalfStartMatchClock: "20:00",
+  secondHalfEndMatchClock: "40:00",
 };
 
 const HALF_LABELS: Record<HalfStatus, string> = {
@@ -116,6 +119,7 @@ export function deriveMatchTime(sync: VideoSyncState, videoSeconds: number): Der
   const firstStartClock = parseClockToSeconds(sync.firstHalfStartMatchClock) ?? 0;
   const firstEndClock = parseClockToSeconds(sync.firstHalfEndMatchClock) ?? 20 * 60;
   const secondStartClock = parseClockToSeconds(sync.secondHalfStartMatchClock) ?? 20 * 60;
+  const secondEndClock = parseClockToSeconds(sync.secondHalfEndMatchClock) ?? 40 * 60;
   const videoStartClock =
     parseClockToSeconds(sync.videoStartMatchClock) ??
     (sync.videoStartHalf === "second" ? 20 * 60 : 0);
@@ -139,6 +143,11 @@ export function deriveMatchTime(sync: VideoSyncState, videoSeconds: number): Der
 
   if (sync.secondHalfStartVideoSeconds !== undefined && videoSeconds >= sync.secondHalfStartVideoSeconds) {
     matchSeconds = secondStartClock + (videoSeconds - sync.secondHalfStartVideoSeconds);
+    half = "second";
+  }
+
+  if (sync.secondHalfEndVideoSeconds !== undefined && videoSeconds >= sync.secondHalfEndVideoSeconds) {
+    matchSeconds = secondEndClock;
     half = "second";
   }
 

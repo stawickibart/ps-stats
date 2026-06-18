@@ -55,20 +55,21 @@ npm test
 1. Enter team names, current clock, and the active time bucket.
 2. Load a YouTube video URL or ID in the video sync panel.
 3. Choose whether the video starts in the first or second half, and enter the match clock at the start of the video.
-4. As the video plays, mark the first-half start, first-half end, and second-half start when those moments occur.
-5. Skip around the video as needed. When video sync is enabled, the match clock and time bucket update from the current playback position.
-6. Select the current time-tracking category before playing the video: home possession, away possession, contested possession, or out of play. For home/away possession, select one player from that team; for contested possession, select one player from each team; out of play does not require player selection.
-7. The video is blocked from playing until the required time-tracking state is complete.
-8. The active category and selected player context are tracked while the video plays forward and appear in the timeline under the video.
-9. If you pause the video, the current time-tracking selection is cleared and the paused-video event form becomes required.
-10. If you rewind into already-tagged possession time and choose a different possession or player context, confirm the override before later possession tags are trimmed and replaced.
-11. In the event form, choose what happened first: pass, dribble/carry, shot, engagement/duel, turnover, or note.
-12. Fill in the dynamic details requested for that event, such as passer/receiver, shooter/assistant, defender, direction, and outcome.
-13. Click **Record event**. Before resuming after a pause, log at least one event and then choose a fresh time-tracking state.
-14. Use the play tagging panel to record which offensive or defensive play a team is running.
-15. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.
-16. Click **Finish game & update knowledge base** to snapshot the game into player/team history.
-17. Export the event log or summary CSV for review or spreadsheet import. Event exports include half, match seconds, video seconds, video URL, stat values, and play art links.
+4. While calibrating the video, play/pause freely until the first-half start is marked. After the first-half end is marked, play/pause freely again until the second-half start is marked.
+5. As the video plays, mark the first-half start, first-half end, second-half start, and second-half end when those moments occur.
+6. Use the app-level Play/Pause buttons. They are disabled when playback is not allowed by the current workflow state.
+7. Select the current time-tracking category before playing match action: home possession, away possession, contested possession, or out of play. For home/away possession, select one player from that team; for contested possession, select one player from each team; out of play does not require player selection.
+8. The video is blocked from playing during match action until the required time-tracking state is complete. A readiness banner at the top explains what is missing.
+9. The active category and selected player context are tracked while the video plays forward and appear in the timeline under the video.
+10. If you pause the video during match action, the current time-tracking selection is cleared and the paused-video event form becomes required.
+11. If you rewind into already-tagged possession time and choose a different possession or player context, confirm the override before later possession tags are trimmed and replaced.
+12. In the event form, choose what happened first: pass, dribble/carry, shot, engagement/duel, turnover, or note.
+13. Fill in the dynamic details requested for that event, such as passer/receiver, shooter/assistant, defender, direction, outcome, field depth/lane, and whether it came from open play or a set piece.
+14. Click **Record event**. Before resuming after a pause, log at least one event and then choose a fresh time-tracking state.
+15. Use the play tagging panel to record which offensive or defensive play a team is running.
+16. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.
+17. Click **Finish game & update knowledge base** to snapshot the game into player/team history.
+18. Export the event log or summary CSV for review or spreadsheet import. Event exports include half, match seconds, video seconds, video URL, field location, event source, stat values, and play art links.
 
 ## Knowledge base
 
