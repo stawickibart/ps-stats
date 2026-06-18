@@ -6,6 +6,7 @@ export type PlayerSlot = {
   name: string;
   team: TeamSide;
   role: string;
+  active?: boolean;
 };
 
 export type StatValueType = "integer" | "decimal" | "string" | "boolean" | "time";
@@ -49,7 +50,7 @@ export type PossessionSegment = {
 
 export type StatEvent = {
   id: string;
-  kind: "stat" | "set-piece" | "note" | "play";
+  kind: "stat" | "set-piece" | "note" | "play" | "substitution";
   team: TeamSide;
   half?: "first" | "halftime" | "second" | "unknown";
   matchSeconds?: number;
@@ -77,6 +78,10 @@ export type StatEvent = {
   eventSource?: "open-play" | "set-piece";
   eventSourceSetPieceCode?: string;
   eventSourceSetPieceLabel?: string;
+  substitutionOutPlayerId?: string;
+  substitutionOutPlayerName?: string;
+  substitutionInPlayerId?: string;
+  substitutionInPlayerName?: string;
   bucket: string;
   minute: string;
   note: string;
@@ -96,14 +101,18 @@ export const TIME_BUCKETS = [
 ];
 
 export const DEFAULT_PLAYERS: PlayerSlot[] = [
-  { id: "home-goalie", name: "Home Goalie", team: "home", role: "1 - Goalie" },
-  { id: "home-center", name: "Home Center", team: "home", role: "2 - Center" },
-  { id: "home-near-wing", name: "Home Near Wing", team: "home", role: "3 - Near Wing" },
-  { id: "home-far-wing", name: "Home Far Wing", team: "home", role: "4 - Far Wing" },
-  { id: "away-goalie", name: "Away Goalie", team: "away", role: "1 - Goalie" },
-  { id: "away-center", name: "Away Center", team: "away", role: "2 - Center" },
-  { id: "away-near-wing", name: "Away Near Wing", team: "away", role: "3 - Near Wing" },
-  { id: "away-far-wing", name: "Away Far Wing", team: "away", role: "4 - Far Wing" },
+  { id: "home-goalie", name: "Bart", team: "home", role: "1 - Goalie", active: true },
+  { id: "home-center", name: "Stan", team: "home", role: "2 - Center", active: true },
+  { id: "home-near-wing", name: "Ryan", team: "home", role: "3 - Near Wing", active: true },
+  { id: "home-far-wing", name: "Max", team: "home", role: "4 - Far Wing", active: true },
+  { id: "home-sub-1", name: "Ducks Sub 1", team: "home", role: "Substitute", active: false },
+  { id: "home-sub-2", name: "Ducks Sub 2", team: "home", role: "Substitute", active: false },
+  { id: "away-goalie", name: "Lucas", team: "away", role: "1 - Goalie", active: true },
+  { id: "away-center", name: "Jairo", team: "away", role: "2 - Center", active: true },
+  { id: "away-near-wing", name: "Matt", team: "away", role: "3 - Near Wing", active: true },
+  { id: "away-far-wing", name: "Lola", team: "away", role: "4 - Far Wing", active: true },
+  { id: "away-sub-1", name: "Steamrollers Sub 1", team: "away", role: "Substitute", active: false },
+  { id: "away-sub-2", name: "Steamrollers Sub 2", team: "away", role: "Substitute", active: false },
 ];
 
 export const STAT_DEFINITIONS: StatDefinition[] = [

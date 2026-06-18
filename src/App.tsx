@@ -24,6 +24,7 @@ import { YouTubeVideoPlayer } from "./YouTubeVideoPlayer";
 import {
   DEFAULT_VIDEO_SYNC,
   VideoSyncState,
+  bucketFromMatchSeconds,
   deriveMatchTime,
   formatClock,
   parseClockToSeconds,
@@ -34,6 +35,7 @@ type MatchState = {
   homeTeam: string;
   awayTeam: string;
   gameDate: string;
+  gameLocation: string;
   homeDivision: string;
   awayDivision: string;
   activeBucket: string;
@@ -137,6 +139,7 @@ type GameSnapshot = {
   date: string;
   videoUrl: string;
   finishedAt: string;
+  location: string;
   homeTeam: string;
   awayTeam: string;
   homeDivision: string;
@@ -211,9 +214,10 @@ function centerPlayerIdForTeam(players: PlayerSlot[], team: TeamSide) {
 }
 
 const initialState: MatchState = {
-  homeTeam: "Rock",
-  awayTeam: "Opponent",
+  homeTeam: "Ducks",
+  awayTeam: "Steamrollers",
   gameDate: new Date().toISOString().slice(0, 10),
+  gameLocation: "",
   homeDivision: "104",
   awayDivision: "104",
   activeBucket: TIME_BUCKETS[0],
@@ -226,7 +230,7 @@ const initialState: MatchState = {
   activePossession: "unset",
   possessionSelection: defaultPossessionSelection(DEFAULT_PLAYERS),
   possessionSegments: [],
-  knowledgeBase: emptyKnowledgeBase,
+  knowledgeBase: createSeedKnowledgeBase(),
   players: DEFAULT_PLAYERS,
   events: [],
 };
@@ -285,11 +289,17 @@ function normalizePlayers(players?: PlayerSlot[]) {
     "opp-dw",
     "opp-g",
   ]);
-  if (players.some((player) => oldDefaultIds.has(player.id))) {
+  if (
+    players.some((player) => oldDefaultIds.has(player.id)) ||
+    players.some((player) => player.name.startsWith("Home ") || player.name.startsWith("Away "))
+  ) {
     return DEFAULT_PLAYERS;
   }
 
-  return players;
+  return players.map((player) => ({
+    ...player,
+    active: player.active ?? !player.role.toLowerCase().includes("sub"),
+  }));
 }
 
 function normalizePossessionSegments(segments?: PossessionSegment[]) {
@@ -382,6 +392,10 @@ function normalizeId(value: string) {
 }
 
 function normalizeKnowledgeBase(knowledgeBase?: KnowledgeBase) {
+  if (!knowledgeBase || (!knowledgeBase.games.length && !knowledgeBase.players.length && !knowledgeBase.teams.length)) {
+    return createSeedKnowledgeBase();
+  }
+
   return {
     players:
       knowledgeBase?.players.map((player) => ({
@@ -692,6 +706,7 @@ function buildGameSnapshot(match: MatchState) {
     date: match.gameDate,
     videoUrl: match.video.videoUrl,
     finishedAt: new Date().toISOString(),
+    location: match.gameLocation,
     homeTeam: match.homeTeam,
     awayTeam: match.awayTeam,
     homeDivision: match.homeDivision,
@@ -844,6 +859,167 @@ function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
   };
 }
 
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function distributeGoals(totalGoals: number) {
+  const homeScore = randomInt(0, totalGoals);
+  return {
+    home: homeScore,
+    away: totalGoals - homeScore,
+  };
+}
+
+function createPossessionSegments(homeSeconds: number, awaySeconds: number, contestedSeconds: number, outSeconds: number) {
+  const owners: Array<{ owner: PossessionOwner; remaining: number }> = [
+    { owner: "home", remaining: homeSeconds },
+    { owner: "out", remaining: outSeconds },
+    { owner: "away", remaining: awaySeconds },
+    { owner: "contested", remaining: contestedSeconds },
+  ];
+  const segments: PossessionSegment[] = [];
+  let cursor = 0;
+  let index = 0;
+
+  while (owners.some((entry) => entry.remaining > 0)) {
+    const entry = owners[index % owners.length];
+    if (entry.remaining > 0) {
+      const duration = Math.min(entry.remaining, randomInt(20, 95));
+      segments.push({
+        id: createEventId(),
+        owner: entry.owner,
+        participantPlayerIds: [],
+        participantPlayerNames: [],
+        startSeconds: cursor,
+        endSeconds: cursor + duration,
+      });
+      cursor += duration;
+      entry.remaining -= duration;
+    }
+    index += 1;
+  }
+
+  return segments;
+}
+
+function createFakeGameSnapshot(index: number, homeTeam: string, awayTeam: string, location: string): GameSnapshot {
+  const totalGoals = randomInt(3, 10);
+  const score = distributeGoals(totalGoals);
+  const homePossession = randomInt(360, 720);
+  const awayPossession = randomInt(360, 720);
+  const contested = randomInt(430, 520);
+  const out = Math.max(0, 2400 - homePossession - awayPossession - contested);
+  const homeStats: StatTotals = {
+    G: score.home,
+    Sh: score.home + randomInt(3, 8),
+    SoT: score.home + randomInt(1, 5),
+    Pc: randomInt(18, 45),
+    Pas: randomInt(28, 60),
+    ProgP: randomInt(3, 12),
+    ProgC: randomInt(2, 10),
+    Wp: randomInt(4, 14),
+    Lp: randomInt(3, 12),
+  };
+  const awayStats: StatTotals = {
+    G: score.away,
+    Sh: score.away + randomInt(3, 8),
+    SoT: score.away + randomInt(1, 5),
+    Pc: randomInt(18, 45),
+    Pas: randomInt(28, 60),
+    ProgP: randomInt(3, 12),
+    ProgC: randomInt(2, 10),
+    Wp: randomInt(4, 14),
+    Lp: randomInt(3, 12),
+  };
+  const date = new Date(Date.now() - index * 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const events: StatEvent[] = [];
+  const makeEvent = (team: TeamSide, statCode: string, statLabel: string, playerName: string, videoSeconds: number): StatEvent => ({
+    id: createEventId(),
+    kind: "stat",
+    team,
+    playerId: normalizeId(playerName),
+    playerName,
+    playerRole: statCode === "G" ? "2 - Center" : "3 - Near Wing",
+    statCode,
+    statLabel,
+    statValueType: "integer",
+    statValue: "1",
+    bucket: bucketFromMatchSeconds(videoSeconds),
+    minute: formatClock(videoSeconds),
+    matchSeconds: videoSeconds,
+    videoSeconds,
+    note: "Seeded sample game event",
+    recordedAt: new Date().toISOString(),
+  });
+
+  for (let i = 0; i < score.home; i += 1) {
+    events.push(makeEvent("home", "G", "Goal", i % 2 ? "Stan" : "Ryan", randomInt(120, 2300)));
+  }
+  for (let i = 0; i < score.away; i += 1) {
+    events.push(makeEvent("away", "G", "Goal", i % 2 ? "Jairo" : "Lola", randomInt(120, 2300)));
+  }
+  events.push(makeEvent("home", "Pc", "Pass Completed", "Stan", randomInt(120, 2300)));
+  events.push(makeEvent("away", "Wp", "Won Possession", "Matt", randomInt(120, 2300)));
+
+  const possessionSegments = createPossessionSegments(homePossession, awayPossession, contested, out);
+  return {
+    id: createEventId(),
+    date,
+    videoUrl: DEFAULT_VIDEO_SYNC.videoUrl,
+    finishedAt: new Date().toISOString(),
+    location,
+    homeTeam,
+    awayTeam,
+    homeDivision: "104",
+    awayDivision: "104",
+    homeScore: score.home,
+    awayScore: score.away,
+    teamStats: { home: homeStats, away: awayStats },
+    teamPlayStyles: {
+      home: { "offense: Goal kick - Stack": randomInt(1, 4), "offense: Side kick mid - Tap-in": randomInt(1, 3) },
+      away: { "offense: Goal kick - Basic": randomInt(1, 4), "defense: Side kick mid - Funnel": randomInt(1, 3) },
+    },
+    playerStats: [
+      {
+        playerId: "stan",
+        playerName: "Stan",
+        team: "home" as TeamSide,
+        teamName: homeTeam,
+        division: "104",
+        role: "2 - Center",
+        stats: { G: Math.max(0, Math.floor(score.home / 2)), Pas: randomInt(8, 22), Pc: randomInt(6, 18) },
+        ratings: emptyRatings(),
+      },
+      {
+        playerId: "jairo",
+        playerName: "Jairo",
+        team: "away" as TeamSide,
+        teamName: awayTeam,
+        division: "104",
+        role: "2 - Center",
+        stats: { G: Math.max(0, Math.floor(score.away / 2)), Pas: randomInt(8, 22), Pc: randomInt(6, 18) },
+        ratings: emptyRatings(),
+      },
+    ].map((player) => ({ ...player, ratings: calculateRatings(player.stats) })),
+    possession: { home: homePossession, away: awayPossession, contested, out },
+    possessionSegments,
+    events,
+    eventCount: events.length,
+  };
+}
+
+function createSeedKnowledgeBase() {
+  const games = [
+    createFakeGameSnapshot(1, "Ducks", "Steamrollers", "Madison Community Center"),
+    createFakeGameSnapshot(2, "Ducks", "Lightning", "Riverside Fieldhouse"),
+    createFakeGameSnapshot(3, "Steamrollers", "Ducks", "North Gym"),
+    createFakeGameSnapshot(4, "Ducks", "Strikers", "Central Rec Center"),
+  ];
+
+  return games.reduce((knowledgeBase, game) => mergeKnowledgeBase(knowledgeBase, game), emptyKnowledgeBase);
+}
+
 function trimPossessionSegmentsAfter(segments: PossessionSegment[], seconds: number) {
   return segments
     .flatMap((segment) => {
@@ -941,6 +1117,7 @@ function readStoredState(): MatchState {
         ...(parsed.video ?? {}),
       },
       gameDate: parsed.gameDate ?? initialState.gameDate,
+      gameLocation: parsed.gameLocation ?? initialState.gameLocation,
       homeDivision: parsed.homeDivision ?? initialState.homeDivision,
       awayDivision: parsed.awayDivision ?? initialState.awayDivision,
       nextStatValue: parsed.nextStatValue ?? "",
@@ -967,6 +1144,9 @@ function App() {
   const [setPieceTeam, setSetPieceTeam] = useState<TeamSide>("home");
   const [setPieceRating, setSetPieceRating] = useState(3);
   const [startingPossessionTeam, setStartingPossessionTeam] = useState<TeamSide>("home");
+  const [substitutionTeam, setSubstitutionTeam] = useState<TeamSide>("home");
+  const [subOutPlayerId, setSubOutPlayerId] = useState("");
+  const [subInPlayerId, setSubInPlayerId] = useState("");
   const [playTeam, setPlayTeam] = useState<TeamSide>("home");
   const [playType, setPlayType] = useState<PlayType>("offense");
   const [selectedPlayId, setSelectedPlayId] = useState(DEFAULT_PLAYS[0].id);
@@ -1017,6 +1197,14 @@ function App() {
         message: "Add a game date so finished ratings are easy to find in the knowledge base.",
       });
     }
+    if (!match.gameLocation.trim()) {
+      warnings.push({
+        id: "missing-location-warning",
+        tone: "warning",
+        title: "Missing location",
+        message: "Add where the game is being played before starting or finishing the rating.",
+      });
+    }
     if (!match.homeDivision.trim() || !match.awayDivision.trim()) {
       warnings.push({
         id: "missing-division-warning",
@@ -1043,6 +1231,7 @@ function App() {
     match.awayDivision,
     match.awayTeam,
     match.gameDate,
+    match.gameLocation,
     match.homeDivision,
     match.homeTeam,
     match.possessionSelection.contestedPlayerOneId,
@@ -1231,6 +1420,23 @@ function App() {
       players: current.players.map((player) =>
         player.id === playerId ? { ...player, ...patch } : player,
       ),
+    }));
+  };
+
+  const addSubstitute = (team: TeamSide) => {
+    const id = `${team}-sub-${createEventId()}`;
+    setMatch((current) => ({
+      ...current,
+      players: [
+        ...current.players,
+        {
+          id,
+          team,
+          name: `${team === "home" ? current.homeTeam : current.awayTeam} Sub`,
+          role: "Substitute",
+          active: false,
+        },
+      ],
     }));
   };
 
@@ -1449,6 +1655,44 @@ function App() {
       playType: play.type,
       playArtUrl: play.artUrl,
     });
+  };
+
+  const addSubstitutionEvent = () => {
+    if (match.activePossession !== "out") {
+      notify("error", "Substitution unavailable", "Substitutions can only be tagged when the ball is out of play.");
+      return;
+    }
+    const outPlayer = match.players.find((player) => player.id === subOutPlayerId && player.team === substitutionTeam);
+    const inPlayer = match.players.find((player) => player.id === subInPlayerId && player.team === substitutionTeam);
+    if (!outPlayer || !inPlayer) {
+      notify("error", "Incomplete substitution", "Choose both the player leaving and the substitute entering.");
+      return;
+    }
+    if (outPlayer.id === inPlayer.id) {
+      notify("error", "Invalid substitution", "Choose two different players for the substitution.");
+      return;
+    }
+
+    setMatch((current) => ({
+      ...current,
+      players: current.players.map((player) => {
+        if (player.id === outPlayer.id) return { ...player, active: false };
+        if (player.id === inPlayer.id) return { ...player, active: true };
+        return player;
+      }),
+    }));
+
+    addEvent({
+      kind: "substitution",
+      team: substitutionTeam,
+      substitutionOutPlayerId: outPlayer.id,
+      substitutionOutPlayerName: outPlayer.name,
+      substitutionInPlayerId: inPlayer.id,
+      substitutionInPlayerName: inPlayer.name,
+    });
+    setSubOutPlayerId("");
+    setSubInPlayerId("");
+    notify("success", "Substitution recorded", `${inPlayer.name} entered for ${outPlayer.name}.`);
   };
 
   const submitStructuredEvent = () => {
@@ -1711,7 +1955,17 @@ function App() {
   };
 
   const startFirstHalfWithPossession = () => {
-    const centerPlayerId = centerPlayerIdForTeam(match.players, startingPossessionTeam);
+    if (!match.gameLocation.trim()) {
+      notify("error", "Missing location", "Enter where the game is being played before starting the first half.");
+      return;
+    }
+    const homeActive = match.players.filter((player) => player.team === "home" && player.active !== false);
+    const awayActive = match.players.filter((player) => player.team === "away" && player.active !== false);
+    if (homeActive.length !== 4 || awayActive.length !== 4 || [...homeActive, ...awayActive].some((player) => !player.name.trim())) {
+      notify("error", "Incomplete active roster", "Enter exactly four active players with names for each team before starting.");
+      return;
+    }
+    const centerPlayerId = centerPlayerIdForTeam(match.players.filter((player) => player.active !== false), startingPossessionTeam);
     setMatch((current) => ({
       ...current,
       activePossession: startingPossessionTeam,
@@ -1781,6 +2035,9 @@ function App() {
     setSelectedSetPiece(SET_PIECES[0].code);
     setSetPieceTeam("home");
     setSetPieceRating(3);
+    setSubstitutionTeam("home");
+    setSubOutPlayerId("");
+    setSubInPlayerId("");
     setPlayTeam("home");
     setPlayType("offense");
     setSelectedPlayId(DEFAULT_PLAYS[0].id);
@@ -1817,6 +2074,8 @@ function App() {
         "Field End Lane",
         "Event Source",
         "Source Set Piece",
+        "Substitution Out",
+        "Substitution In",
         "Note",
       ],
       ...match.events
@@ -1847,6 +2106,8 @@ function App() {
           event.fieldEndLane,
           event.eventSource,
           event.eventSourceSetPieceLabel ?? event.eventSourceSetPieceCode,
+          event.substitutionOutPlayerName,
+          event.substitutionInPlayerName,
           event.note,
         ]),
     ]);
@@ -1879,8 +2140,8 @@ function App() {
       notify("error", "No rating data", "Record at least one event before finishing a game.");
       return;
     }
-    if (!match.gameDate || !match.homeDivision.trim() || !match.awayDivision.trim()) {
-      notify("error", "Missing game metadata", "Add a game date and both team divisions before finishing.");
+    if (!match.gameDate || !match.gameLocation.trim() || !match.homeDivision.trim() || !match.awayDivision.trim()) {
+      notify("error", "Missing game metadata", "Add a game date, location, and both team divisions before finishing.");
       return;
     }
 
@@ -1903,8 +2164,9 @@ function App() {
   };
 
   const teamName = (team: TeamSide) => (team === "home" ? match.homeTeam : match.awayTeam);
-  const homePlayers = match.players.filter((player) => player.team === "home");
-  const awayPlayers = match.players.filter((player) => player.team === "away");
+  const activePlayers = match.players.filter((player) => player.active !== false);
+  const homePlayers = activePlayers.filter((player) => player.team === "home");
+  const awayPlayers = activePlayers.filter((player) => player.team === "away");
   const latestEvents = match.events.slice(0, 10);
 
   if (!role) {
@@ -2113,6 +2375,31 @@ function App() {
                   Before rating begins, mark the video timestamp where the first half starts and
                   choose the team with the ball. That team's center is assumed to be in possession.
                 </p>
+                <div className="start-setup-grid">
+                  <label>
+                    Game location
+                    <input
+                      value={match.gameLocation}
+                      onChange={(event) => updateMatch("gameLocation", event.target.value)}
+                      placeholder="Gym / venue name"
+                    />
+                  </label>
+                  <label>
+                    Home team
+                    <input value={match.homeTeam} onChange={(event) => updateMatch("homeTeam", event.target.value)} />
+                  </label>
+                  <label>
+                    Away team
+                    <input value={match.awayTeam} onChange={(event) => updateMatch("awayTeam", event.target.value)} />
+                  </label>
+                </div>
+                <RosterSetupPanel
+                  players={activePlayers}
+                  homeTeam={match.homeTeam}
+                  awayTeam={match.awayTeam}
+                  onPlayerChange={updatePlayer}
+                  onAddSubstitute={addSubstitute}
+                />
                 <label>
                   Team with ball
                   <select
@@ -2135,7 +2422,7 @@ function App() {
                   durationSeconds={currentVideoDuration}
                   homeTeam={match.homeTeam}
                   awayTeam={match.awayTeam}
-                  players={match.players}
+                  players={activePlayers}
                   selection={match.possessionSelection}
                   segments={match.possessionSegments}
                   onSelect={selectPossession}
@@ -2145,10 +2432,23 @@ function App() {
                   form={eventForm}
                   homeTeam={match.homeTeam}
                   awayTeam={match.awayTeam}
-                  players={match.players}
+                  players={activePlayers}
                   eventRequiredAfterPause={eventRequiredAfterPause}
                   onChange={(patch) => setEventForm((current) => ({ ...current, ...patch }))}
                   onSubmit={submitStructuredEvent}
+                />
+                <SubstitutionPanel
+                  team={substitutionTeam}
+                  players={match.players}
+                  homeTeam={match.homeTeam}
+                  awayTeam={match.awayTeam}
+                  disabled={match.activePossession !== "out"}
+                  outPlayerId={subOutPlayerId}
+                  inPlayerId={subInPlayerId}
+                  onTeamChange={setSubstitutionTeam}
+                  onOutChange={setSubOutPlayerId}
+                  onInChange={setSubInPlayerId}
+                  onSubmit={addSubstitutionEvent}
                 />
               </>
             )}
@@ -2251,6 +2551,14 @@ function App() {
           <h2 id="setup-title">Context for every tap</h2>
         </div>
         <div className="setup-grid">
+          <label>
+            Location
+            <input
+              value={match.gameLocation}
+              onChange={(event) => updateMatch("gameLocation", event.target.value)}
+              placeholder="Gym / venue name"
+            />
+          </label>
           <label>
             Game date
             <input
@@ -2613,6 +2921,28 @@ type EventCapturePanelProps = {
   onSubmit: () => void;
 };
 
+type RosterSetupPanelProps = {
+  players: PlayerSlot[];
+  homeTeam: string;
+  awayTeam: string;
+  onPlayerChange: (playerId: string, patch: Partial<PlayerSlot>) => void;
+  onAddSubstitute: (team: TeamSide) => void;
+};
+
+type SubstitutionPanelProps = {
+  team: TeamSide;
+  players: PlayerSlot[];
+  homeTeam: string;
+  awayTeam: string;
+  disabled: boolean;
+  outPlayerId: string;
+  inPlayerId: string;
+  onTeamChange: (team: TeamSide) => void;
+  onOutChange: (playerId: string) => void;
+  onInChange: (playerId: string) => void;
+  onSubmit: () => void;
+};
+
 type AnchorRowProps = {
   label: string;
   seconds?: number;
@@ -2874,6 +3204,9 @@ function eventCode(event: StatEvent) {
   if (event.kind === "set-piece") {
     return event.setPieceCode ?? "SET";
   }
+  if (event.kind === "substitution") {
+    return "SUB";
+  }
   return "NOTE";
 }
 
@@ -2886,6 +3219,11 @@ function eventTitle(event: StatEvent, teamName: (team: TeamSide) => string) {
   }
   if (event.kind === "set-piece") {
     return `${teamName(event.team)} - ${event.setPieceLabel ?? event.setPieceCode}`;
+  }
+  if (event.kind === "substitution") {
+    return `${teamName(event.team)} - ${event.substitutionInPlayerName ?? "Sub"} for ${
+      event.substitutionOutPlayerName ?? "player"
+    }`;
   }
   return `${teamName(event.team)} - ${event.statLabel ?? "Note"}`;
 }
@@ -3089,6 +3427,131 @@ function CourtAreaPicker({ title, depth, lane, onSelect }: CourtAreaPickerProps)
         <span>Opposition goal</span>
       </div>
     </div>
+  );
+}
+
+function RosterSetupPanel({
+  players,
+  homeTeam,
+  awayTeam,
+  onPlayerChange,
+  onAddSubstitute,
+}: RosterSetupPanelProps) {
+  const renderTeam = (team: TeamSide, label: string) => {
+    const teamPlayers = players.filter((player) => player.team === team);
+    const activeCount = teamPlayers.filter((player) => player.active !== false).length;
+    return (
+      <div className="roster-setup-team" key={team}>
+        <div className="section-heading-row compact">
+          <div>
+            <strong>{label}</strong>
+            <p className="muted">{activeCount}/4 active players selected</p>
+          </div>
+          <button type="button" onClick={() => onAddSubstitute(team)}>
+            Add substitute
+          </button>
+        </div>
+        <div className="roster-row-list">
+          {teamPlayers.map((player) => (
+            <article className="roster-row" key={player.id}>
+              <label>
+                Active
+                <input
+                  type="checkbox"
+                  checked={player.active !== false}
+                  onChange={(event) => onPlayerChange(player.id, { active: event.target.checked })}
+                />
+              </label>
+              <label>
+                Player
+                <input
+                  value={player.name}
+                  onChange={(event) => onPlayerChange(player.id, { name: event.target.value })}
+                />
+              </label>
+              <label>
+                Position / role
+                <input
+                  value={player.role}
+                  onChange={(event) => onPlayerChange(player.id, { role: event.target.value })}
+                />
+              </label>
+            </article>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <section className="roster-setup-panel" aria-label="Active players and substitutes">
+      {renderTeam("home", homeTeam)}
+      {renderTeam("away", awayTeam)}
+    </section>
+  );
+}
+
+function SubstitutionPanel({
+  team,
+  players,
+  homeTeam,
+  awayTeam,
+  disabled,
+  outPlayerId,
+  inPlayerId,
+  onTeamChange,
+  onOutChange,
+  onInChange,
+  onSubmit,
+}: SubstitutionPanelProps) {
+  const teamPlayers = players.filter((player) => player.team === team);
+  const activePlayers = teamPlayers.filter((player) => player.active !== false);
+  const substitutePlayers = teamPlayers.filter((player) => player.active === false);
+
+  return (
+    <section className={disabled ? "substitution-panel disabled" : "substitution-panel"} aria-label="Substitution">
+      <div>
+        <p className="section-kicker">Substitution</p>
+        <h3>Change active player</h3>
+        <p className="muted">
+          Substitutions are available when the current time-tracking state is out of play.
+        </p>
+      </div>
+      <div className="event-step-grid">
+        <label>
+          Team
+          <select value={team} onChange={(event) => onTeamChange(event.target.value as TeamSide)} disabled={disabled}>
+            <option value="home">{homeTeam}</option>
+            <option value="away">{awayTeam}</option>
+          </select>
+        </label>
+        <label>
+          Player leaving
+          <select value={outPlayerId} onChange={(event) => onOutChange(event.target.value)} disabled={disabled}>
+            <option value="">Select active player</option>
+            {activePlayers.map((player) => (
+              <option value={player.id} key={player.id}>
+                {playerOptionLabel(player)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Player entering
+          <select value={inPlayerId} onChange={(event) => onInChange(event.target.value)} disabled={disabled}>
+            <option value="">Select substitute</option>
+            {substitutePlayers.map((player) => (
+              <option value={player.id} key={player.id}>
+                {playerOptionLabel(player)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <button type="button" onClick={onSubmit} disabled={disabled} className="primary-action">
+        Record substitution
+      </button>
+    </section>
   );
 }
 

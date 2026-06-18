@@ -21,6 +21,9 @@ A browser-based rater console for collecting power soccer match statistics while
 - In-app notifications for invalid entries and competing information such as bad stat values, missing possession players, duplicate contested players, or incomplete game metadata.
 - Role-based entry screen with a rater workspace for video tagging and an admin workspace for setup, review, knowledge base, and tagged-game views.
 - Default player roles are Goalie (1), Center (2), Near Wing (3), and Far Wing (4) for each team.
+- Default teams are Ducks and Steamrollers.
+- Seeded fake tagged games populate admin review and knowledge-base views on first load.
+- Substitution tagging updates the active player list when the ball is out of play.
 
 ## Use without running npm locally
 
@@ -55,7 +58,8 @@ npm test
 ## Rater workflow
 
 1. Choose **Rater** on the entry screen.
-1. Initially, only load/play the video and choose which team has the ball when the first half starts.
+1. Initially, only load/play the video, enter the game location, confirm active players/substitutes, and choose which team has the ball when the first half starts.
+1. Default active players are Ducks: 1-Bart, 2-Stan, 3-Ryan, 4-Max and Steamrollers: 1-Lucas, 2-Jairo, 3-Matt, 4-Lola. These remain editable.
 1. Click **Mark 1H start** at the kickoff moment. The selected team's Center (2) is automatically assumed to have possession.
 1. After the first half has started, the rest of the rater tools appear.
 1. While calibrating the video, play/pause freely until the first-half start is marked. After the first-half end is marked, play/pause freely again until the second-half start is marked.
@@ -71,6 +75,7 @@ npm test
 1. Click **Record event**. Before resuming after a pause, log at least one event and then choose a fresh time-tracking state.
 1. Use the play tagging panel to record which offensive or defensive play a team is running.
 1. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.
+1. When the ball is out of play, use the substitution panel to replace an active player with a substitute. Subsequent tagging uses the updated active players.
 1. Click **Finish game & update knowledge base** to snapshot the game into player/team history.
 1. Export the event log or summary CSV for review or spreadsheet import. Event exports include half, match seconds, video seconds, video URL, field location, event source, stat values, and play art links.
 
