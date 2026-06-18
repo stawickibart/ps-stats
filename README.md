@@ -120,5 +120,6 @@ Additional default stats adapt applicable ideas from the DataMB guide to power s
 
 ## Additional documentation
 
+- [What is power soccer and this program?](docs/what-is-power-soccer-and-this-program.md)
 - [Architecture and runtime notes](docs/architecture.md)
 - [Rater workflow and stat taxonomy notes](docs/rater-workflow-and-stat-taxonomy.md)
