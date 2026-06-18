@@ -12,3 +12,8 @@
 - add keyboard shortcuts for rater flow
 - add a post-game review checklist
 - add a deployment/status note in the UI that data is local to this browser
+- the rater console portion beyond the first step greying out UI is not working, there should be a what is completed vs. not UI similar to the one on the first step functioning through the whole rater console, particularly the pause event step
+- need a data model for each of the tracked events, vs advanced stats, one should be calculated by the other, all places where a rater tags an advanced stats should be removed -- things like play type/type of kick should be added to the event details
+- open text field should be auto consumed into a summary to populate the team profiles in the admin view
+- Initial play type should always be set piece/kick off
+- The current location/type of event should be inferred from the end point of the prior event/needs some logic
