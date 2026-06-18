@@ -3536,8 +3536,11 @@ function RosterSetupPanel({
   onPlayerChange,
   onAddSubstitute,
 }: RosterSetupPanelProps) {
+  const [showSubstitutes, setShowSubstitutes] = useState(false);
   const renderTeam = (team: TeamSide, label: string) => {
     const teamPlayers = players.filter((player) => player.team === team);
+    const activePlayers = teamPlayers.filter((player) => player.active !== false);
+    const substitutePlayers = teamPlayers.filter((player) => player.active === false);
     const activeCount = teamPlayers.filter((player) => player.active !== false).length;
     return (
       <div className="roster-setup-team" key={team}>
@@ -3551,7 +3554,7 @@ function RosterSetupPanel({
           </button>
         </div>
         <div className="roster-row-list">
-          {teamPlayers.map((player) => (
+          {activePlayers.map((player) => (
             <article className="roster-row" key={player.id}>
               <label>
                 Active
@@ -3577,6 +3580,34 @@ function RosterSetupPanel({
               </label>
             </article>
           ))}
+          {showSubstitutes
+            ? substitutePlayers.map((player) => (
+                <article className="roster-row substitute" key={player.id}>
+                  <label>
+                    Active
+                    <input
+                      type="checkbox"
+                      checked={player.active !== false}
+                      onChange={(event) => onPlayerChange(player.id, { active: event.target.checked })}
+                    />
+                  </label>
+                  <label>
+                    Substitute
+                    <input
+                      value={player.name}
+                      onChange={(event) => onPlayerChange(player.id, { name: event.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Position / role
+                    <input
+                      value={player.role}
+                      onChange={(event) => onPlayerChange(player.id, { role: event.target.value })}
+                    />
+                  </label>
+                </article>
+              ))
+            : null}
         </div>
       </div>
     );
@@ -3584,6 +3615,12 @@ function RosterSetupPanel({
 
   return (
     <section className="roster-setup-panel" aria-label="Active players and substitutes">
+      <div className="roster-setup-header">
+        <p className="muted">Confirm four active players per team. Substitute fields stay hidden until needed.</p>
+        <button type="button" onClick={() => setShowSubstitutes((current) => !current)}>
+          {showSubstitutes ? "Hide substitutes" : "Edit substitutes"}
+        </button>
+      </div>
       {renderTeam("home", homeTeam)}
       {renderTeam("away", awayTeam)}
     </section>
@@ -4168,18 +4205,51 @@ function gameFlowKind(event: StatEvent) {
 }
 
 function GameFlowVisualization({ game }: { game: GameSnapshot }) {
+  const [visibleKinds, setVisibleKinds] = useState<string[]>([
+    "goal",
+    "shot",
+    "turnover",
+    "set-piece",
+    "substitution",
+    "event",
+  ]);
   const timelineDuration = Math.max(2400, ...game.events.map((event) => event.videoSeconds ?? event.matchSeconds ?? 0), 1);
-  const flowEvents = game.events
+  const allFlowEvents = game.events
     .filter((event) => event.videoSeconds !== undefined || event.matchSeconds !== undefined)
     .slice()
     .sort((a, b) => (a.videoSeconds ?? a.matchSeconds ?? 0) - (b.videoSeconds ?? b.matchSeconds ?? 0));
+  const flowEvents = allFlowEvents.filter((event) => visibleKinds.includes(gameFlowKind(event)));
+  const toggleKind = (kind: string) => {
+    setVisibleKinds((current) =>
+      current.includes(kind) ? current.filter((value) => value !== kind) : [...current, kind],
+    );
+  };
 
-  if (!flowEvents.length) {
+  if (!allFlowEvents.length) {
     return <p className="empty-state">No timed events were saved for this game.</p>;
   }
 
   return (
     <div className="game-flow-visualization">
+      <div className="game-flow-filters" aria-label="Game flow filters">
+        {[
+          ["goal", "Goals"],
+          ["shot", "Shots"],
+          ["turnover", "Turnovers"],
+          ["set-piece", "Set pieces"],
+          ["substitution", "Subs"],
+          ["event", "Other"],
+        ].map(([kind, label]) => (
+          <button
+            type="button"
+            className={visibleKinds.includes(kind) ? "chip active" : "chip"}
+            key={kind}
+            onClick={() => toggleKind(kind)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div className="game-flow-track" aria-label="Game event flow timeline">
         {flowEvents.map((event) => {
           const seconds = event.videoSeconds ?? event.matchSeconds ?? 0;
@@ -4195,6 +4265,7 @@ function GameFlowVisualization({ game }: { game: GameSnapshot }) {
             />
           );
         })}
+        {!flowEvents.length ? <span className="game-flow-empty">No events match filters</span> : null}
       </div>
       <div className="game-flow-legend">
         <span className="marker-goal">Goal</span>

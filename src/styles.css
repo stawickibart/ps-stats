@@ -546,6 +546,18 @@ td:first-child {
   gap: 1rem;
 }
 
+.roster-setup-header {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.roster-setup-header p {
+  margin-bottom: 0;
+}
+
 .roster-setup-team {
   display: grid;
   gap: 0.75rem;
@@ -569,6 +581,10 @@ td:first-child {
 
 .roster-row input[type="checkbox"] {
   width: auto;
+}
+
+.roster-row.substitute {
+  opacity: 0.82;
 }
 
 .substitution-panel {
@@ -1344,6 +1360,12 @@ td:first-child {
   margin-bottom: 1rem;
 }
 
+.game-flow-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .game-flow-track {
   position: relative;
   height: 72px;
@@ -1358,6 +1380,15 @@ td:first-child {
       rgb(20 32 51 / 10%) 10%
     ),
     linear-gradient(180deg, #f8fbff, #eef4ff);
+}
+
+.game-flow-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-weight: 900;
 }
 
 .game-flow-marker {
