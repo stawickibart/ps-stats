@@ -41,6 +41,8 @@ export type PlayDefinition = {
 export type PossessionSegment = {
   id: string;
   owner: PossessionOwner;
+  participantPlayerIds: string[];
+  participantPlayerNames: string[];
   startSeconds: number;
   endSeconds: number;
 };

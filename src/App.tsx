@@ -43,6 +43,7 @@ type MatchState = {
   statDefinitions: StatDefinition[];
   plays: PlayDefinition[];
   activePossession: PossessionOwner;
+  possessionSelection: PossessionSelection;
   possessionSegments: PossessionSegment[];
   knowledgeBase: KnowledgeBase;
   players: PlayerSlot[];
@@ -52,6 +53,13 @@ type MatchState = {
 const STORAGE_KEY = "power-soccer-stat-rater-v1";
 type AppPage = "tracker" | "settings" | "knowledge";
 type StatTotals = Record<string, number>;
+
+type PossessionSelection = {
+  homePlayerId: string;
+  awayPlayerId: string;
+  contestedPlayerOneId: string;
+  contestedPlayerTwoId: string;
+};
 
 type RatingScores = {
   attack: number;
@@ -129,6 +137,18 @@ const emptyKnowledgeBase: KnowledgeBase = {
   games: [],
 };
 
+function defaultPossessionSelection(players: PlayerSlot[]): PossessionSelection {
+  const homePlayer = players.find((player) => player.team === "home") ?? players[0];
+  const awayPlayer = players.find((player) => player.team === "away") ?? players.find((player) => player.id !== homePlayer?.id);
+
+  return {
+    homePlayerId: homePlayer?.id ?? "",
+    awayPlayerId: awayPlayer?.id ?? "",
+    contestedPlayerOneId: homePlayer?.id ?? "",
+    contestedPlayerTwoId: awayPlayer?.id ?? "",
+  };
+}
+
 const initialState: MatchState = {
   homeTeam: "Rock",
   awayTeam: "Opponent",
@@ -143,6 +163,7 @@ const initialState: MatchState = {
   statDefinitions: STAT_DEFINITIONS,
   plays: DEFAULT_PLAYS,
   activePossession: "contested",
+  possessionSelection: defaultPossessionSelection(DEFAULT_PLAYERS),
   possessionSegments: [],
   knowledgeBase: emptyKnowledgeBase,
   players: DEFAULT_PLAYERS,
@@ -190,7 +211,63 @@ function normalizePossessionSegments(segments?: PossessionSegment[]) {
       ...segment,
       id: segment.id || `possession-${index}`,
       owner: segment.owner ?? "contested",
+      participantPlayerIds: segment.participantPlayerIds ?? [],
+      participantPlayerNames: segment.participantPlayerNames ?? [],
     }));
+}
+
+function normalizePossessionSelection(selection: PossessionSelection | undefined, players: PlayerSlot[]) {
+  return {
+    ...defaultPossessionSelection(players),
+    ...(selection ?? {}),
+  };
+}
+
+function selectedPossessionPlayerIds(owner: PossessionOwner, selection: PossessionSelection) {
+  if (owner === "home") {
+    return selection.homePlayerId ? [selection.homePlayerId] : [];
+  }
+
+  if (owner === "away") {
+    return selection.awayPlayerId ? [selection.awayPlayerId] : [];
+  }
+
+  return [selection.contestedPlayerOneId, selection.contestedPlayerTwoId].filter(Boolean);
+}
+
+function participantKey(owner: PossessionOwner, selection: PossessionSelection) {
+  const ids = selectedPossessionPlayerIds(owner, selection);
+  return owner === "contested" ? ids.slice().sort().join("|") : ids.join("|");
+}
+
+function resolvePossessionParticipants(
+  owner: PossessionOwner,
+  selection: PossessionSelection,
+  players: PlayerSlot[],
+) {
+  const ids = selectedPossessionPlayerIds(owner, selection);
+  if (owner === "contested" && new Set(ids).size !== 2) {
+    return undefined;
+  }
+  if (owner !== "contested" && ids.length !== 1) {
+    return undefined;
+  }
+
+  const selectedPlayers = ids
+    .map((id) => players.find((player) => player.id === id))
+    .filter((player): player is PlayerSlot => Boolean(player));
+
+  if (selectedPlayers.length !== ids.length) {
+    return undefined;
+  }
+
+  return {
+    ids: owner === "contested" ? selectedPlayers.map((player) => player.id).sort() : selectedPlayers.map((player) => player.id),
+    names:
+      owner === "contested"
+        ? selectedPlayers.map((player) => player.name || player.role).sort()
+        : selectedPlayers.map((player) => player.name || player.role),
+  };
 }
 
 function normalizeId(value: string) {
@@ -475,6 +552,7 @@ function mergePossessionInterval(
   startSeconds: number,
   endSeconds: number,
   owner: PossessionOwner,
+  participants: { ids: string[]; names: string[] },
 ) {
   const start = Math.max(0, Math.min(startSeconds, endSeconds));
   const end = Math.max(startSeconds, endSeconds);
@@ -501,6 +579,8 @@ function mergePossessionInterval(
   nextSegments.push({
     id: createEventId(),
     owner,
+    participantPlayerIds: participants.ids,
+    participantPlayerNames: participants.names,
     startSeconds: start,
     endSeconds: end,
   });
@@ -510,7 +590,14 @@ function mergePossessionInterval(
     .sort((a, b) => a.startSeconds - b.startSeconds)
     .reduce<PossessionSegment[]>((merged, segment) => {
       const previous = merged.at(-1);
-      if (previous && previous.owner === segment.owner && segment.startSeconds - previous.endSeconds <= 0.1) {
+      const sameParticipants =
+        previous?.participantPlayerIds.join("|") === segment.participantPlayerIds.join("|");
+      if (
+        previous &&
+        previous.owner === segment.owner &&
+        sameParticipants &&
+        segment.startSeconds - previous.endSeconds <= 0.1
+      ) {
         previous.endSeconds = Math.max(previous.endSeconds, segment.endSeconds);
         return merged;
       }
@@ -532,6 +619,7 @@ function readStoredState(): MatchState {
     }
 
     const parsed = JSON.parse(raw) as MatchState;
+    const players = parsed.players?.length ? parsed.players : initialState.players;
     return {
       ...initialState,
       ...parsed,
@@ -546,9 +634,10 @@ function readStoredState(): MatchState {
       statDefinitions: normalizeStats(parsed.statDefinitions),
       plays: normalizePlays(parsed.plays),
       activePossession: parsed.activePossession ?? "contested",
+      possessionSelection: normalizePossessionSelection(parsed.possessionSelection, players),
       possessionSegments: normalizePossessionSegments(parsed.possessionSegments),
       knowledgeBase: normalizeKnowledgeBase(parsed.knowledgeBase),
-      players: parsed.players?.length ? parsed.players : initialState.players,
+      players,
       events: parsed.events ?? [],
     };
   } catch {
@@ -613,12 +702,23 @@ function App() {
 
     setMatch((current) => ({
       ...current,
-      possessionSegments: mergePossessionInterval(
-        current.possessionSegments,
-        previousSeconds,
-        currentVideoSeconds,
-        current.activePossession,
-      ),
+      possessionSegments: (() => {
+        const participants = resolvePossessionParticipants(
+          current.activePossession,
+          current.possessionSelection,
+          current.players,
+        );
+        if (!participants) {
+          return current.possessionSegments;
+        }
+        return mergePossessionInterval(
+          current.possessionSegments,
+          previousSeconds,
+          currentVideoSeconds,
+          current.activePossession,
+          participants,
+        );
+      })(),
     }));
   }, [currentVideoSeconds]);
 
@@ -867,10 +967,24 @@ function App() {
   };
 
   const selectPossession = (owner: PossessionOwner) => {
+    const participants = resolvePossessionParticipants(owner, match.possessionSelection, match.players);
+    if (!participants) {
+      window.alert(
+        owner === "contested"
+          ? "Select two different players contesting possession before tracking contested possession."
+          : "Select the player in possession before tracking possession.",
+      );
+      return;
+    }
+
     const willOverrideFuture = match.possessionSegments.some(
       (segment) => segment.endSeconds > currentVideoSeconds + 0.1,
     );
-    const shouldTrimFuture = willOverrideFuture && owner !== match.activePossession;
+    const shouldTrimFuture =
+      willOverrideFuture &&
+      (owner !== match.activePossession ||
+        participantKey(owner, match.possessionSelection) !==
+          participantKey(match.activePossession, match.possessionSelection));
 
     if (shouldTrimFuture) {
       const confirmed = window.confirm(
@@ -885,6 +999,37 @@ function App() {
       ...current,
       activePossession: owner,
       possessionSegments: shouldTrimFuture
+        ? trimPossessionSegmentsAfter(current.possessionSegments, currentVideoSeconds)
+        : current.possessionSegments,
+    }));
+    previousPossessionVideoSeconds.current = currentVideoSeconds;
+  };
+
+  const updatePossessionSelection = (patch: Partial<PossessionSelection>) => {
+    const nextSelection = {
+      ...match.possessionSelection,
+      ...patch,
+    };
+    const selectionChangedForActiveOwner =
+      participantKey(match.activePossession, nextSelection) !==
+      participantKey(match.activePossession, match.possessionSelection);
+    const willOverrideFuture =
+      selectionChangedForActiveOwner &&
+      match.possessionSegments.some((segment) => segment.endSeconds > currentVideoSeconds + 0.1);
+
+    if (willOverrideFuture) {
+      const confirmed = window.confirm(
+        "Changing the selected possession player here will remove possession tags after this video timestamp and replace them as playback continues. Is that correct?",
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setMatch((current) => ({
+      ...current,
+      possessionSelection: nextSelection,
+      possessionSegments: willOverrideFuture
         ? trimPossessionSegmentsAfter(current.possessionSegments, currentVideoSeconds)
         : current.possessionSegments,
     }));
@@ -1163,8 +1308,11 @@ function App() {
               durationSeconds={currentVideoDuration}
               homeTeam={match.homeTeam}
               awayTeam={match.awayTeam}
+              players={match.players}
+              selection={match.possessionSelection}
               segments={match.possessionSegments}
               onSelect={selectPossession}
+              onSelectionChange={updatePossessionSelection}
             />
           </div>
 
@@ -1640,8 +1788,11 @@ type PossessionTrackerProps = {
   durationSeconds: number;
   homeTeam: string;
   awayTeam: string;
+  players: PlayerSlot[];
+  selection: PossessionSelection;
   segments: PossessionSegment[];
   onSelect: (owner: PossessionOwner) => void;
+  onSelectionChange: (patch: Partial<PossessionSelection>) => void;
 };
 
 function possessionLabel(owner: PossessionOwner, homeTeam: string, awayTeam: string) {
@@ -1660,8 +1811,11 @@ function PossessionTracker({
   durationSeconds,
   homeTeam,
   awayTeam,
+  players,
+  selection,
   segments,
   onSelect,
+  onSelectionChange,
 }: PossessionTrackerProps) {
   const timelineDuration = Math.max(
     durationSeconds,
@@ -1676,6 +1830,10 @@ function PossessionTracker({
     },
     { home: 0, away: 0, contested: 0 },
   );
+  const homePlayers = players.filter((player) => player.team === "home");
+  const awayPlayers = players.filter((player) => player.team === "away");
+  const allPlayers = players;
+  const selectedParticipants = resolvePossessionParticipants(activePossession, selection, players);
 
   return (
     <section className="possession-panel" aria-labelledby="possession-title">
@@ -1704,6 +1862,70 @@ function PossessionTracker({
           </button>
         ))}
       </div>
+      <div className="possession-player-grid">
+        <label>
+          {homeTeam} player in possession
+          <select
+            value={selection.homePlayerId}
+            onChange={(event) => onSelectionChange({ homePlayerId: event.target.value })}
+            required
+          >
+            {homePlayers.map((player) => (
+              <option value={player.id} key={player.id}>
+                {player.name} ({player.role})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {awayTeam} player in possession
+          <select
+            value={selection.awayPlayerId}
+            onChange={(event) => onSelectionChange({ awayPlayerId: event.target.value })}
+            required
+          >
+            {awayPlayers.map((player) => (
+              <option value={player.id} key={player.id}>
+                {player.name} ({player.role})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Contested player 1
+          <select
+            value={selection.contestedPlayerOneId}
+            onChange={(event) => onSelectionChange({ contestedPlayerOneId: event.target.value })}
+            required
+          >
+            {allPlayers.map((player) => (
+              <option value={player.id} key={player.id}>
+                {player.name} ({player.role})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Contested player 2
+          <select
+            value={selection.contestedPlayerTwoId}
+            onChange={(event) => onSelectionChange({ contestedPlayerTwoId: event.target.value })}
+            required
+          >
+            {allPlayers.map((player) => (
+              <option value={player.id} key={player.id}>
+                {player.name} ({player.role})
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className={selectedParticipants ? "possession-context" : "possession-context warning"}>
+        Active possession context:{" "}
+        {selectedParticipants
+          ? `${possessionLabel(activePossession, homeTeam, awayTeam)} - ${selectedParticipants.names.join(" vs ")}`
+          : "Select the required player context before playing/tagging possession."}
+      </p>
       <div className="possession-timeline" aria-label="Possession timeline">
         {segments.map((segment) => (
           <div
@@ -1711,7 +1933,7 @@ function PossessionTracker({
             key={segment.id}
             title={`${possessionLabel(segment.owner, homeTeam, awayTeam)} ${formatClock(
               segment.startSeconds,
-            )}-${formatClock(segment.endSeconds)}`}
+            )}-${formatClock(segment.endSeconds)} ${segment.participantPlayerNames.join(" vs ")}`}
             style={{
               left: `${(segment.startSeconds / timelineDuration) * 100}%`,
               width: `${((segment.endSeconds - segment.startSeconds) / timelineDuration) * 100}%`,

@@ -12,7 +12,7 @@ A browser-based rater console for collecting power soccer match statistics while
 - Local browser persistence, latest-entry audit trail, delete/undo-by-entry, and match reset.
 - CSV exports for both long-form event logs and spreadsheet-style player/time summaries.
 - YouTube video sync that maps video timestamps to match clock, half, and time bucket.
-- Possession timer with home/away/contested selections and a colored video timeline.
+- Possession timer with home/away/contested selections, required player context, and a colored video timeline.
 - Editable stat definitions with abbreviation, display name, definition, value type, color group, and active status.
 - Editable play library with offensive/defensive type, play name, play art link, and source link.
 - Unified event log with distinct visual treatments for stats, plays, set pieces, and notes.
@@ -38,15 +38,16 @@ npm run build
 3. Choose whether the video starts in the first or second half, and enter the match clock at the start of the video.
 4. As the video plays, mark the first-half start, first-half end, and second-half start when those moments occur.
 5. Skip around the video as needed. When video sync is enabled, the match clock and time bucket update from the current playback position.
-6. Select possession: home, away, or contested. The active selection is tracked while the video plays forward and appears in the timeline under the video.
-7. If you rewind into already-tagged possession time and choose a different possession, confirm the override before later possession tags are trimmed and replaced.
-8. Optionally type a note for the next event.
-9. Optionally enter a value for the next stat if the stat definition uses a value type other than a simple count.
-10. Tap the stat button on the relevant player card.
-11. Use the play tagging panel to record which offensive or defensive play a team is running.
-12. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.
-13. Click **Finish game & update knowledge base** to snapshot the game into player/team history.
-14. Export the event log or summary CSV for review or spreadsheet import. Event exports include half, match seconds, video seconds, video URL, stat values, and play art links.
+6. Select possession: home, away, or contested. Also select the player in possession for home/away, or the two players contesting possession for contested.
+7. The active possession and selected player context are tracked while the video plays forward and appear in the timeline under the video.
+8. If you rewind into already-tagged possession time and choose a different possession or player context, confirm the override before later possession tags are trimmed and replaced.
+9. Optionally type a note for the next event.
+10. Optionally enter a value for the next stat if the stat definition uses a value type other than a simple count.
+11. Tap the stat button on the relevant player card.
+12. Use the play tagging panel to record which offensive or defensive play a team is running.
+13. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.
+14. Click **Finish game & update knowledge base** to snapshot the game into player/team history.
+15. Export the event log or summary CSV for review or spreadsheet import. Event exports include half, match seconds, video seconds, video URL, stat values, and play art links.
 
 ## Knowledge base
 
