@@ -1,6 +1,6 @@
 # TODO
 
-> Note: Items in this file are informational backlog notes only. Ignore them during prompt execution unless a user explicitly asks to work on or reference TODO items.
+> Note: Items in this file are informational backlog notes only. Ignore them during prompt execution unless a user explicitly asks to work on or reference TODO items. Any updates to this file require direct user confirmation.
 
 - create rater burn in/quality tasks and tracking
 - set up db behind all this and figure out where/how to host
