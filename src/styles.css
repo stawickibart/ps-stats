@@ -25,6 +25,9 @@
   --play-offense-border: #74d89a;
   --play-defense: #eef4ff;
   --play-defense-border: #8db3ff;
+  --possession-home: #2563eb;
+  --possession-away: #dc2626;
+  --possession-contested: #f59e0b;
   --danger: #b42318;
 }
 
@@ -344,6 +347,129 @@ td:first-child {
   color: #33445d;
   font-weight: 900;
   padding: 0 0.5rem;
+}
+
+.possession-panel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid #dbe6f2;
+  border-radius: 18px;
+  background: #fbfdff;
+}
+
+.possession-panel h3 {
+  margin-bottom: 0.35rem;
+}
+
+.possession-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.possession-button {
+  display: grid;
+  gap: 0.2rem;
+  min-height: 64px;
+  text-align: left;
+}
+
+.possession-button strong {
+  color: #152033;
+}
+
+.possession-button span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.possession-button.active {
+  box-shadow: 0 0 0 3px rgb(25 82 209 / 16%);
+}
+
+.possession-button.possession-home,
+.legend-item.possession-home {
+  border-color: rgb(37 99 235 / 36%);
+  background: rgb(37 99 235 / 10%);
+}
+
+.possession-button.possession-away,
+.legend-item.possession-away {
+  border-color: rgb(220 38 38 / 34%);
+  background: rgb(220 38 38 / 10%);
+}
+
+.possession-button.possession-contested,
+.legend-item.possession-contested {
+  border-color: rgb(245 158 11 / 42%);
+  background: rgb(245 158 11 / 14%);
+}
+
+.possession-timeline {
+  position: relative;
+  overflow: hidden;
+  height: 34px;
+  border: 1px solid #cbd8e7;
+  border-radius: 999px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent calc(10% - 1px),
+      rgb(20 32 51 / 10%) calc(10% - 1px),
+      rgb(20 32 51 / 10%) 10%
+    ),
+    #eef3f8;
+}
+
+.possession-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+}
+
+.possession-segment.possession-home {
+  background: var(--possession-home);
+}
+
+.possession-segment.possession-away {
+  background: var(--possession-away);
+}
+
+.possession-segment.possession-contested {
+  background: var(--possession-contested);
+}
+
+.possession-cursor {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  background: #111827;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 80%);
+}
+
+.possession-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border: 1px solid;
+  border-radius: 999px;
+  color: #162033;
+  padding: 0.2rem 0.65rem;
 }
 
 .current-time-card {
@@ -840,6 +966,7 @@ td:first-child {
   }
 
   .player-fields,
+  .possession-buttons,
   .set-piece-controls,
   .sync-grid,
   .boundary-actions,

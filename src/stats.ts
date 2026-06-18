@@ -1,4 +1,5 @@
 export type TeamSide = "home" | "away";
+export type PossessionOwner = TeamSide | "contested";
 
 export type PlayerSlot = {
   id: string;
@@ -35,6 +36,13 @@ export type PlayDefinition = {
   artUrl: string;
   sourceUrl?: string;
   active: boolean;
+};
+
+export type PossessionSegment = {
+  id: string;
+  owner: PossessionOwner;
+  startSeconds: number;
+  endSeconds: number;
 };
 
 export type StatEvent = {

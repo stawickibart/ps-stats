@@ -5,11 +5,13 @@ type YouTubePlayerProps = {
   videoId: string;
   currentVideoSeconds: number;
   onTimeChange: (seconds: number) => void;
+  onDurationChange: (seconds: number) => void;
 };
 
 type YouTubePlayerInstance = {
   destroy: () => void;
   getCurrentTime: () => number;
+  getDuration: () => number;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
 };
 
@@ -61,6 +63,7 @@ export function YouTubeVideoPlayer({
   videoId,
   currentVideoSeconds,
   onTimeChange,
+  onDurationChange,
 }: YouTubePlayerProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YouTubePlayerInstance | null>(null);
@@ -111,10 +114,14 @@ export function YouTubeVideoPlayer({
       if (typeof nextTime === "number" && Number.isFinite(nextTime)) {
         onTimeChange(nextTime);
       }
+      const duration = playerRef.current?.getDuration();
+      if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
+        onDurationChange(duration);
+      }
     }, 500);
 
     return () => window.clearInterval(intervalId);
-  }, [onTimeChange, ready]);
+  }, [onDurationChange, onTimeChange, ready]);
 
   const seekBy = (offsetSeconds: number) => {
     const target = Math.max(0, currentVideoSeconds + offsetSeconds);

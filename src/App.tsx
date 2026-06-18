@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ADVANCED_STATS,
   DEFAULT_PLAYS,
@@ -12,6 +12,8 @@ import {
   PlayDefinition,
   PlayType,
   PlayerSlot,
+  PossessionOwner,
+  PossessionSegment,
   StatDefinition,
   StatEvent,
   StatValueType,
@@ -37,6 +39,8 @@ type MatchState = {
   video: VideoSyncState;
   statDefinitions: StatDefinition[];
   plays: PlayDefinition[];
+  activePossession: PossessionOwner;
+  possessionSegments: PossessionSegment[];
   players: PlayerSlot[];
   events: StatEvent[];
 };
@@ -54,6 +58,8 @@ const initialState: MatchState = {
   video: DEFAULT_VIDEO_SYNC,
   statDefinitions: STAT_DEFINITIONS,
   plays: DEFAULT_PLAYS,
+  activePossession: "contested",
+  possessionSegments: [],
   players: DEFAULT_PLAYERS,
   events: [],
 };
@@ -88,6 +94,86 @@ function normalizePlays(plays?: PlayDefinition[]) {
   }));
 }
 
+function normalizePossessionSegments(segments?: PossessionSegment[]) {
+  if (!segments?.length) {
+    return [];
+  }
+
+  return segments
+    .filter((segment) => segment.endSeconds > segment.startSeconds)
+    .map((segment, index) => ({
+      ...segment,
+      id: segment.id || `possession-${index}`,
+      owner: segment.owner ?? "contested",
+    }));
+}
+
+function trimPossessionSegmentsAfter(segments: PossessionSegment[], seconds: number) {
+  return segments
+    .flatMap((segment) => {
+      if (segment.startSeconds >= seconds) {
+        return [];
+      }
+
+      if (segment.endSeconds > seconds) {
+        return [{ ...segment, endSeconds: seconds }];
+      }
+
+      return [segment];
+    })
+    .filter((segment) => segment.endSeconds > segment.startSeconds);
+}
+
+function mergePossessionInterval(
+  segments: PossessionSegment[],
+  startSeconds: number,
+  endSeconds: number,
+  owner: PossessionOwner,
+) {
+  const start = Math.max(0, Math.min(startSeconds, endSeconds));
+  const end = Math.max(startSeconds, endSeconds);
+  if (end - start < 0.05) {
+    return segments;
+  }
+
+  const nextSegments: PossessionSegment[] = [];
+  for (const segment of segments) {
+    if (segment.endSeconds <= start || segment.startSeconds >= end) {
+      nextSegments.push(segment);
+      continue;
+    }
+
+    if (segment.startSeconds < start) {
+      nextSegments.push({ ...segment, endSeconds: start });
+    }
+
+    if (segment.endSeconds > end) {
+      nextSegments.push({ ...segment, startSeconds: end });
+    }
+  }
+
+  nextSegments.push({
+    id: createEventId(),
+    owner,
+    startSeconds: start,
+    endSeconds: end,
+  });
+
+  return nextSegments
+    .filter((segment) => segment.endSeconds - segment.startSeconds >= 0.05)
+    .sort((a, b) => a.startSeconds - b.startSeconds)
+    .reduce<PossessionSegment[]>((merged, segment) => {
+      const previous = merged.at(-1);
+      if (previous && previous.owner === segment.owner && segment.startSeconds - previous.endSeconds <= 0.1) {
+        previous.endSeconds = Math.max(previous.endSeconds, segment.endSeconds);
+        return merged;
+      }
+
+      merged.push({ ...segment });
+      return merged;
+    }, []);
+}
+
 function readStoredState(): MatchState {
   if (typeof window === "undefined") {
     return initialState;
@@ -110,6 +196,8 @@ function readStoredState(): MatchState {
       nextStatValue: parsed.nextStatValue ?? "",
       statDefinitions: normalizeStats(parsed.statDefinitions),
       plays: normalizePlays(parsed.plays),
+      activePossession: parsed.activePossession ?? "contested",
+      possessionSegments: normalizePossessionSegments(parsed.possessionSegments),
       players: parsed.players?.length ? parsed.players : initialState.players,
       events: parsed.events ?? [],
     };
@@ -128,9 +216,15 @@ function App() {
   const [playType, setPlayType] = useState<PlayType>("offense");
   const [selectedPlayId, setSelectedPlayId] = useState(DEFAULT_PLAYS[0].id);
   const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
+  const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
+  const previousPossessionVideoSeconds = useRef(0);
 
   const onVideoTimeChange = useCallback((seconds: number) => {
     setCurrentVideoSeconds(seconds);
+  }, []);
+
+  const onVideoDurationChange = useCallback((seconds: number) => {
+    setCurrentVideoDuration(seconds);
   }, []);
 
   const derivedVideoTime = useMemo(
@@ -157,6 +251,26 @@ function App() {
       setSelectedPlayId(activePlays[0].id);
     }
   }, [activePlays, selectedPlayId]);
+
+  useEffect(() => {
+    const previousSeconds = previousPossessionVideoSeconds.current;
+    previousPossessionVideoSeconds.current = currentVideoSeconds;
+
+    const delta = currentVideoSeconds - previousSeconds;
+    if (delta <= 0.05 || delta > 2.5) {
+      return;
+    }
+
+    setMatch((current) => ({
+      ...current,
+      possessionSegments: mergePossessionInterval(
+        current.possessionSegments,
+        previousSeconds,
+        currentVideoSeconds,
+        current.activePossession,
+      ),
+    }));
+  }, [currentVideoSeconds]);
 
   useEffect(() => {
     if (!match.video.syncEnabled) {
@@ -402,9 +516,35 @@ function App() {
     });
   };
 
+  const selectPossession = (owner: PossessionOwner) => {
+    const willOverrideFuture = match.possessionSegments.some(
+      (segment) => segment.endSeconds > currentVideoSeconds + 0.1,
+    );
+    const shouldTrimFuture = willOverrideFuture && owner !== match.activePossession;
+
+    if (shouldTrimFuture) {
+      const confirmed = window.confirm(
+        "Changing possession here will remove possession tags after this video timestamp and replace them as playback continues. Is that correct?",
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setMatch((current) => ({
+      ...current,
+      activePossession: owner,
+      possessionSegments: shouldTrimFuture
+        ? trimPossessionSegmentsAfter(current.possessionSegments, currentVideoSeconds)
+        : current.possessionSegments,
+    }));
+    previousPossessionVideoSeconds.current = currentVideoSeconds;
+  };
+
   const loadVideo = () => {
     updateVideo({ videoId: parseYouTubeVideoId(match.video.videoUrl) });
     setCurrentVideoSeconds(0);
+    previousPossessionVideoSeconds.current = 0;
   };
 
   const selectVideoStartHalf = (half: VideoSyncState["videoStartHalf"]) => {
@@ -455,6 +595,8 @@ function App() {
     setPlayType("offense");
     setSelectedPlayId(DEFAULT_PLAYS[0].id);
     setCurrentVideoSeconds(0);
+    setCurrentVideoDuration(0);
+    previousPossessionVideoSeconds.current = 0;
   };
 
   const exportEvents = () => {
@@ -627,6 +769,16 @@ function App() {
               videoId={match.video.videoId}
               currentVideoSeconds={currentVideoSeconds}
               onTimeChange={onVideoTimeChange}
+              onDurationChange={onVideoDurationChange}
+            />
+            <PossessionTracker
+              activePossession={match.activePossession}
+              currentVideoSeconds={currentVideoSeconds}
+              durationSeconds={currentVideoDuration}
+              homeTeam={match.homeTeam}
+              awayTeam={match.awayTeam}
+              segments={match.possessionSegments}
+              onSelect={selectPossession}
             />
           </div>
 
@@ -1069,6 +1221,105 @@ function AnchorRow({ label, seconds }: AnchorRowProps) {
   );
 }
 
+type PossessionTrackerProps = {
+  activePossession: PossessionOwner;
+  currentVideoSeconds: number;
+  durationSeconds: number;
+  homeTeam: string;
+  awayTeam: string;
+  segments: PossessionSegment[];
+  onSelect: (owner: PossessionOwner) => void;
+};
+
+function possessionLabel(owner: PossessionOwner, homeTeam: string, awayTeam: string) {
+  if (owner === "home") {
+    return homeTeam;
+  }
+  if (owner === "away") {
+    return awayTeam;
+  }
+  return "Contested";
+}
+
+function PossessionTracker({
+  activePossession,
+  currentVideoSeconds,
+  durationSeconds,
+  homeTeam,
+  awayTeam,
+  segments,
+  onSelect,
+}: PossessionTrackerProps) {
+  const timelineDuration = Math.max(
+    durationSeconds,
+    currentVideoSeconds + 1,
+    ...segments.map((segment) => segment.endSeconds),
+    1,
+  );
+  const totals = segments.reduce(
+    (accumulator, segment) => {
+      accumulator[segment.owner] += segment.endSeconds - segment.startSeconds;
+      return accumulator;
+    },
+    { home: 0, away: 0, contested: 0 },
+  );
+
+  return (
+    <section className="possession-panel" aria-labelledby="possession-title">
+      <div>
+        <p className="section-kicker">Possession timer</p>
+        <h3 id="possession-title">Tag possession while the video plays</h3>
+        <p className="muted">
+          Current selection is applied to every second of forward playback until another option is
+          chosen. Rewinding into tagged time and changing the selection asks before overriding.
+        </p>
+      </div>
+      <div className="possession-buttons">
+        {(["home", "away", "contested"] as PossessionOwner[]).map((owner) => (
+          <button
+            type="button"
+            key={owner}
+            className={
+              owner === activePossession
+                ? `possession-button possession-${owner} active`
+                : `possession-button possession-${owner}`
+            }
+            onClick={() => onSelect(owner)}
+          >
+            <strong>{possessionLabel(owner, homeTeam, awayTeam)}</strong>
+            <span>{formatClock(totals[owner])}</span>
+          </button>
+        ))}
+      </div>
+      <div className="possession-timeline" aria-label="Possession timeline">
+        {segments.map((segment) => (
+          <div
+            className={`possession-segment possession-${segment.owner}`}
+            key={segment.id}
+            title={`${possessionLabel(segment.owner, homeTeam, awayTeam)} ${formatClock(
+              segment.startSeconds,
+            )}-${formatClock(segment.endSeconds)}`}
+            style={{
+              left: `${(segment.startSeconds / timelineDuration) * 100}%`,
+              width: `${((segment.endSeconds - segment.startSeconds) / timelineDuration) * 100}%`,
+            }}
+          />
+        ))}
+        <div
+          className="possession-cursor"
+          style={{ left: `${Math.min(100, (currentVideoSeconds / timelineDuration) * 100)}%` }}
+        />
+      </div>
+      <div className="possession-legend">
+        <span className="legend-item possession-home">{homeTeam}</span>
+        <span className="legend-item possession-away">{awayTeam}</span>
+        <span className="legend-item possession-contested">Contested</span>
+        <span>Cursor: {formatClock(currentVideoSeconds)}</span>
+      </div>
+    </section>
+  );
+}
+
 type EventLogProps = {
   events: StatEvent[];
   title: string;
@@ -1288,8 +1539,8 @@ function StatsSettingsPage({
             <p className="section-kicker">Play library</p>
             <h2 id="play-settings-title">Editable plays and art links</h2>
             <p className="muted">
-              The linked Google Slides required sign-in from this environment, so default play names
-              are placeholders. Update names and art links here when the playbook is available.
+              Default play names are seeded from the linked Google Slides summaries. Update names
+              and art links here as the playbook evolves.
             </p>
           </div>
           <div className="action-row">
