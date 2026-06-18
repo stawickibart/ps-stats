@@ -814,83 +814,6 @@ td:first-child {
   gap: 1rem;
 }
 
-.flow-guide-panel {
-  display: grid;
-  gap: 1rem;
-}
-
-.flow-tree {
-  display: grid;
-  gap: 1rem;
-  padding: 1rem;
-  border: 1px solid #d8e4f1;
-  border-radius: 18px;
-  background: #fbfdff;
-}
-
-.flow-node {
-  justify-self: center;
-  border: 1px solid var(--primary);
-  border-radius: 999px;
-  background: #e9f0ff;
-  color: var(--primary-dark);
-  font-weight: 900;
-  padding: 0.55rem 1rem;
-}
-
-.flow-node.root {
-  background: var(--primary);
-  color: #fff;
-}
-
-.flow-children {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.flow-branch {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.flow-leaves {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.flow-leaves span {
-  border: 1px solid #e1e9f2;
-  border-radius: 12px;
-  background: #fff;
-  color: #3b4a5e;
-  font-size: 0.86rem;
-  font-weight: 800;
-  padding: 0.5rem 0.65rem;
-  text-align: center;
-}
-
-.suggestion-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.75rem;
-}
-
-.suggestion-card {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.9rem;
-  border: 1px solid #e1e9f2;
-  border-radius: 16px;
-  background: #fbfdff;
-}
-
-.suggestion-card span {
-  color: var(--muted);
-  font-size: 0.9rem;
-  line-height: 1.4;
-}
-
 .quick-event-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -1512,7 +1435,6 @@ td:first-child {
   .setup-grid,
   .knowledge-layout,
   .performance-layout,
-  .flow-children,
   .event-step-grid,
   .court-picker-layout,
   .quick-event-grid,
