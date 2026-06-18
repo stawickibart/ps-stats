@@ -1155,6 +1155,7 @@ function App() {
   const [showMatchSetupDetails, setShowMatchSetupDetails] = useState(false);
   const [showPlayTagging, setShowPlayTagging] = useState(false);
   const [showAdvancedTags, setShowAdvancedTags] = useState(false);
+  const [showFlowGuide, setShowFlowGuide] = useState(false);
   const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
   const [currentVideoDuration, setCurrentVideoDuration] = useState(0);
   const [eventRequiredAfterPause, setEventRequiredAfterPause] = useState(false);
@@ -2312,6 +2313,9 @@ function App() {
         <section className={canPlayVideo ? "playback-readiness ready" : "playback-readiness blocked"}>
           <strong>{canPlayVideo ? "Video playback ready" : "Video playback blocked"}</strong>
           <span>{topPlaybackMessage}</span>
+          <button type="button" onClick={() => setShowFlowGuide((current) => !current)}>
+            {showFlowGuide ? "Hide rater flow guide" : "Show rater flow guide"}
+          </button>
         </section>
       ) : null}
 
@@ -2346,6 +2350,7 @@ function App() {
         <TaggedGameViewPage knowledgeBase={match.knowledgeBase} teamName={teamName} />
       ) : (
         <>
+      {showFlowGuide ? <RaterFlowGuide /> : null}
       <section className="panel video-sync-panel" aria-labelledby="video-title">
         <div className="section-heading-row">
           <div>
@@ -4190,6 +4195,80 @@ function TaggedGameViewPage({ knowledgeBase }: TaggedGameViewPageProps) {
         )}
       </section>
       {selectedGame ? <TaggedGameTimeline game={selectedGame} /> : null}
+    </section>
+  );
+}
+
+function RaterFlowGuide() {
+  return (
+    <section className="panel flow-guide-panel" aria-labelledby="rater-flow-title">
+      <div>
+        <p className="section-kicker">Rater flow guide</p>
+        <h2 id="rater-flow-title">Current event decision tree</h2>
+        <p className="muted">
+          Use this as a review map. Tell me which branches should be renamed, merged, moved, or
+          hidden and I can adjust the event workflow.
+        </p>
+      </div>
+      <div className="flow-tree">
+        <div className="flow-node root">Pause video</div>
+        <div className="flow-children">
+          <div className="flow-branch">
+            <div className="flow-node">Common event</div>
+            <div className="flow-leaves">
+              <span>Pass</span>
+              <span>Dribble / carry</span>
+              <span>Shot</span>
+              <span>Turnover</span>
+              <span>Engagement / duel</span>
+            </div>
+          </div>
+          <div className="flow-branch">
+            <div className="flow-node">Details</div>
+            <div className="flow-leaves">
+              <span>Team</span>
+              <span>Players involved</span>
+              <span>Outcome</span>
+              <span>Court start/end</span>
+              <span>Open play or set piece</span>
+            </div>
+          </div>
+          <div className="flow-branch">
+            <div className="flow-node">Conditional branches</div>
+            <div className="flow-leaves">
+              <span>Set piece {"->"} play run</span>
+              <span>Out of play {"->"} substitution</span>
+              <span>Advanced {"->"} note / extra tags</span>
+            </div>
+          </div>
+          <div className="flow-branch">
+            <div className="flow-node">Resume video</div>
+            <div className="flow-leaves">
+              <span>Record event</span>
+              <span>Select possession state</span>
+              <span>Press play</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="suggestion-grid">
+        <article className="suggestion-card">
+          <strong>Fold team plays into set-piece details</strong>
+          <span>Play tagging should become a field inside set-piece source details.</span>
+        </article>
+        <article className="suggestion-card">
+          <strong>Move advanced observations into event details</strong>
+          <span>Extra tags can become optional chips after event type/outcome are chosen.</span>
+        </article>
+        <article className="suggestion-card">
+          <strong>Make substitutions an out-of-play event type</strong>
+          <span>When out of play is selected, substitution could appear in the event tree.</span>
+        </article>
+        <article className="suggestion-card">
+          <strong>Collapse source/location until after outcome</strong>
+          <span>Ask what happened first, then reveal only relevant detail sections.</span>
+        </article>
+      </div>
     </section>
   );
 }

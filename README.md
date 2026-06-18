@@ -22,6 +22,7 @@ A browser-based rater console for collecting power soccer match statistics while
 - Role-based entry screen with a rater workspace for video tagging and an admin workspace for setup, review, knowledge base, and tagged-game views.
 - Default player roles are Goalie (1), Center (2), Near Wing (3), and Far Wing (4) for each team.
 - Default teams are Ducks and Steamrollers.
+- Rater flow guide shows the current event decision tree and suggested simplifications for review.
 - Seeded fake tagged games populate admin review and knowledge-base views on first load.
 - Substitution tagging updates the active player list when the ball is out of play.
 
