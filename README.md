@@ -58,7 +58,7 @@ npm test
 ## Rater workflow
 
 1. Choose **Rater** on the entry screen.
-1. Initially, only load/play the video, enter the game location, confirm active players/substitutes, and choose which team has the ball when the first half starts.
+1. Initially, the rater can freely load/play/scrub the video while finding kickoff. The only setup fields shown are game location, teams, active players/substitutes, and which team has the ball when the first half starts.
 1. Default active players are Ducks: 1-Bart, 2-Stan, 3-Ryan, 4-Max and Steamrollers: 1-Lucas, 2-Jairo, 3-Matt, 4-Lola. These remain editable.
 1. Click **Mark 1H start** at the kickoff moment. The selected team's Center (2) is automatically assumed to have possession.
 1. After the first half has started, the rest of the rater tools appear.

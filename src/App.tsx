@@ -1263,6 +1263,16 @@ function App() {
     () => resolvePossessionParticipants(match.activePossession, match.possessionSelection, match.players),
     [match.activePossession, match.players, match.possessionSelection],
   );
+  const homeActiveForStart = match.players.filter((player) => player.team === "home" && player.active !== false);
+  const awayActiveForStart = match.players.filter((player) => player.team === "away" && player.active !== false);
+  const initialRaterSetupComplete =
+    Boolean(match.gameLocation.trim()) &&
+    Boolean(match.homeTeam.trim()) &&
+    Boolean(match.awayTeam.trim()) &&
+    homeActiveForStart.length === 4 &&
+    awayActiveForStart.length === 4 &&
+    [...homeActiveForStart, ...awayActiveForStart].every((player) => player.name.trim());
+  const showOnlyInitialRaterSetup = role === "rater" && page === "tracker" && !firstHalfStarted;
 
   const isCalibrationPlaybackAllowed =
     match.video.firstHalfStartVideoSeconds === undefined ||
@@ -2392,9 +2402,9 @@ function App() {
         </button>
       </nav>
 
-      <NoticeCenter notices={[...notices, ...setupWarnings]} onDismiss={dismissNotice} />
+      <NoticeCenter notices={showOnlyInitialRaterSetup ? notices : [...notices, ...setupWarnings]} onDismiss={dismissNotice} />
 
-      {page === "tracker" ? (
+      {page === "tracker" && firstHalfStarted ? (
         <section className={canPlayVideo ? "playback-readiness ready" : "playback-readiness blocked"}>
           <strong>{canPlayVideo ? "Video playback ready" : "Video playback blocked"}</strong>
           <span>{topPlaybackMessage}</span>
@@ -2433,6 +2443,7 @@ function App() {
       ) : (
         <>
       <section className="panel video-sync-panel" aria-labelledby="video-title">
+        {firstHalfStarted ? (
         <div className="section-heading-row">
           <div>
             <p className="section-kicker">Video sync</p>
@@ -2451,6 +2462,7 @@ function App() {
             Use video clock for entries
           </label>
         </div>
+        ) : null}
 
         <div className="video-sync-grid">
           <div className="video-column">
@@ -2476,11 +2488,11 @@ function App() {
               onPlaybackBlocked={handlePlaybackBlocked}
               onUserPause={handleVideoPause}
             />
-            {playbackBlockReason ? (
+            {firstHalfStarted && playbackBlockReason ? (
               <p className="playback-gate-message">{playbackBlockReason}</p>
-            ) : (
+            ) : firstHalfStarted ? (
               <p className="playback-gate-message ready">Ready to play with current time-tracking state.</p>
-            )}
+            ) : null}
             {!firstHalfStarted ? (
               <section className="start-match-panel" aria-labelledby="start-match-title">
                 <p className="section-kicker">Start first half</p>
@@ -2531,9 +2543,19 @@ function App() {
                     <option value="away">{match.awayTeam}</option>
                   </select>
                 </label>
-                <button type="button" className="primary-action" onClick={startFirstHalfWithPossession}>
+                <button
+                  type="button"
+                  className="primary-action"
+                  onClick={startFirstHalfWithPossession}
+                  disabled={!initialRaterSetupComplete}
+                >
                   Mark 1H start at {formatClock(currentVideoSeconds)}
                 </button>
+                {!initialRaterSetupComplete ? (
+                  <p className="setup-start-hint">
+                    Fill in location, both teams, and exactly four named active players per team to start rating.
+                  </p>
+                ) : null}
               </section>
             ) : (
               <>
