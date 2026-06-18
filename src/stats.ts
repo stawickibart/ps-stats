@@ -270,45 +270,131 @@ export const PLAY_MEMORY_GUIDE = [
   { set: "C", option1: "L", option2: "Center Drifts" },
 ];
 
+const OFFENSIVE_OPTIONS_SLIDE =
+  "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733";
+
+const DEFENSIVE_OPTIONS_SLIDE =
+  "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708";
+
 export const DEFAULT_PLAYS: PlayDefinition[] = [
   {
-    id: "offensive-option-1",
-    name: "Offensive option 1",
+    id: "offense-goal-kick-stack",
+    name: "Goal kick - Stack",
     type: "offense",
-    artUrl:
-      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733",
-    sourceUrl:
-      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
     active: true,
   },
   {
-    id: "offensive-option-2",
-    name: "Offensive option 2",
+    id: "offense-goal-kick-basic",
+    name: "Goal kick - Basic",
     type: "offense",
-    artUrl:
-      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733",
-    sourceUrl:
-      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
     active: true,
   },
   {
-    id: "defensive-option-1",
-    name: "Defensive option 1",
-    type: "defense",
-    artUrl:
-      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708",
-    sourceUrl:
-      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708",
+    id: "offense-side-kick-own-half-basic",
+    name: "Side kick own half - Basic",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
     active: true,
   },
   {
-    id: "defensive-option-2",
-    name: "Defensive option 2",
+    id: "offense-side-kick-mid-tap-in",
+    name: "Side kick mid - Tap-in",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "offense-mid-court-basic",
+    name: "Mid court - Basic",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "offense-side-kick-near-box-basic",
+    name: "Side kick near box - Basic",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "offense-side-kick-wall-basic",
+    name: "Side kick wall - Basic",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "offense-top-box-indirect-middle-basic",
+    name: "Top box indirect middle - Basic",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "offense-top-box-indirect-side-basic",
+    name: "Top box indirect side - Basic",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "offense-corner-basic",
+    name: "Corner - Basic",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "offense-corner-boom-boom",
+    name: "Corner - Boom-boom",
+    type: "offense",
+    artUrl: OFFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: OFFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "defense-goal-kick-50-50-or-shell",
+    name: "Goal kick - 50/50 or Shell",
     type: "defense",
-    artUrl:
-      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708",
-    sourceUrl:
-      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708",
+    artUrl: DEFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: DEFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "defense-side-kick-own-half-open",
+    name: "Side kick own half - Open",
+    type: "defense",
+    artUrl: DEFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: DEFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "defense-side-kick-mid-funnel",
+    name: "Side kick mid - Funnel",
+    type: "defense",
+    artUrl: DEFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: DEFENSIVE_OPTIONS_SLIDE,
+    active: true,
+  },
+  {
+    id: "defense-mid-court-arrow",
+    name: "Mid court - Arrow",
+    type: "defense",
+    artUrl: DEFENSIVE_OPTIONS_SLIDE,
+    sourceUrl: DEFENSIVE_OPTIONS_SLIDE,
     active: true,
   },
 ];

@@ -72,7 +72,10 @@ function normalizeStats(stats?: StatDefinition[]) {
 }
 
 function normalizePlays(plays?: PlayDefinition[]) {
-  if (!plays?.length) {
+  if (
+    !plays?.length ||
+    plays.some((play) => play.id.startsWith("offensive-option") || play.id.startsWith("defensive-option"))
+  ) {
     return DEFAULT_PLAYS;
   }
 

@@ -52,4 +52,4 @@ Open **Stats & plays settings** in the app to:
 - add offensive or defensive plays
 - edit play names and links to play art
 
-The provided Google Slides links required sign-in from the agent environment, so the default offensive and defensive play names are placeholders with the requested source links attached.
+The default offensive and defensive play names are seeded from the linked Google Slides summaries, with each default pointing back to the relevant slide as its play-art/source link.
