@@ -21,6 +21,10 @@
   --negative-border: #ffb36d;
   --discipline: #fff1f4;
   --discipline-border: #ff9cac;
+  --play-offense: #ecfdf3;
+  --play-offense-border: #74d89a;
+  --play-defense: #eef4ff;
+  --play-defense-border: #8db3ff;
   --danger: #b42318;
 }
 
@@ -69,6 +73,16 @@ input:disabled,
 select:disabled {
   cursor: not-allowed;
   opacity: 0.58;
+}
+
+a {
+  color: var(--primary-dark);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
 }
 
 input,
@@ -215,6 +229,29 @@ td:first-child {
   color: rgb(255 255 255 / 55%);
   font-size: 3rem;
   font-weight: 300;
+}
+
+.page-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.35rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgb(42 62 92 / 7%);
+}
+
+.tab-button {
+  border-color: transparent;
+  background: transparent;
+  font-weight: 900;
+}
+
+.tab-button.active {
+  border-color: var(--primary);
+  background: #e9f0ff;
+  color: var(--primary-dark);
 }
 
 .panel {
@@ -500,6 +537,41 @@ td:first-child {
   align-items: end;
 }
 
+.play-tag-panel {
+  display: grid;
+  gap: 1rem;
+}
+
+.play-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr auto;
+  gap: 0.8rem;
+  align-items: end;
+}
+
+.play-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.65rem;
+}
+
+.play-option {
+  display: grid;
+  gap: 0.2rem;
+  min-height: 66px;
+  text-align: left;
+}
+
+.play-option.active {
+  border-color: var(--primary);
+  background: #e9f0ff;
+}
+
+.play-option span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .primary-action {
   border-color: var(--primary);
   background: var(--primary);
@@ -573,8 +645,35 @@ td:first-child {
   align-items: center;
   padding: 0.8rem;
   border: 1px solid #e2eaf3;
+  border-left-width: 6px;
   border-radius: 16px;
   background: #fbfdff;
+}
+
+.event-main {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.event-kind-stat {
+  border-left-color: var(--primary);
+}
+
+.event-kind-play {
+  border-left-color: #16a34a;
+  background: #f7fff9;
+}
+
+.event-kind-set-piece {
+  border-left-color: #f59e0b;
+  background: #fffbf3;
+}
+
+.event-kind-note {
+  border-left-color: #8b5cf6;
+  background: #fbf8ff;
 }
 
 .event-card strong {
@@ -655,11 +754,69 @@ td:first-child {
   line-height: 1.45;
 }
 
+.settings-page,
+.editable-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: 0.7fr 0.8fr 0.9fr 1.5fr 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.editable-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid #e0e9f4;
+  border-radius: 18px;
+  background: #fbfdff;
+}
+
+.editable-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.definition-pill,
+.play-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid #d6e2ef;
+  border-radius: 999px;
+  color: #162033;
+  font-size: 0.86rem;
+  font-weight: 900;
+  padding: 0.3rem 0.75rem;
+}
+
+.play-edit-card {
+  border-left-width: 6px;
+}
+
+.play-offense {
+  border-color: var(--play-offense-border);
+  background: var(--play-offense);
+}
+
+.play-defense {
+  border-color: var(--play-defense-border);
+  background: var(--play-defense);
+}
+
 @media (max-width: 1180px) {
   .hero,
   .columns,
   .video-sync-grid,
-  .setup-grid {
+  .setup-grid,
+  .play-controls,
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 

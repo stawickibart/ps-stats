@@ -7,12 +7,17 @@ export type PlayerSlot = {
   role: string;
 };
 
+export type StatValueType = "integer" | "decimal" | "string" | "boolean" | "time";
+
 export type StatDefinition = {
+  id: string;
   code: string;
   label: string;
   detail: string;
+  valueType: StatValueType;
   tone: "attack" | "defense" | "possession" | "negative" | "discipline";
   templateCode?: string;
+  active: boolean;
 };
 
 export type SetPieceType = {
@@ -21,9 +26,20 @@ export type SetPieceType = {
   detail: string;
 };
 
+export type PlayType = "offense" | "defense";
+
+export type PlayDefinition = {
+  id: string;
+  name: string;
+  type: PlayType;
+  artUrl: string;
+  sourceUrl?: string;
+  active: boolean;
+};
+
 export type StatEvent = {
   id: string;
-  kind: "stat" | "set-piece" | "note";
+  kind: "stat" | "set-piece" | "note" | "play";
   team: TeamSide;
   half?: "first" | "halftime" | "second" | "unknown";
   matchSeconds?: number;
@@ -35,9 +51,15 @@ export type StatEvent = {
   playerRole?: string;
   statCode?: string;
   statLabel?: string;
+  statValueType?: StatValueType;
+  statValue?: string;
   setPieceCode?: string;
   setPieceLabel?: string;
   setPieceRating?: number;
+  playId?: string;
+  playName?: string;
+  playType?: PlayType;
+  playArtUrl?: string;
   bucket: string;
   minute: string;
   note: string;
@@ -70,100 +92,144 @@ export const DEFAULT_PLAYERS: PlayerSlot[] = [
 
 export const STAT_DEFINITIONS: StatDefinition[] = [
   {
+    id: "goal",
     code: "G",
     label: "Goal",
     detail: "Goal.",
+    valueType: "integer",
     tone: "attack",
+    active: true,
   },
   {
+    id: "assist",
     code: "A",
     label: "Assist",
     detail: "Assist.",
+    valueType: "integer",
     tone: "attack",
+    active: true,
   },
   {
+    id: "shot",
     code: "Sh",
     label: "Shot",
     detail: "Shot on goal or near miss.",
+    valueType: "integer",
     tone: "attack",
+    active: true,
   },
   {
+    id: "opportunity-created",
     code: "Op",
     label: "Opportunity Created",
     detail:
       "Cross, pass to shot from set piece, dribble around leading to own shot, or pass to assist. Multiple players may receive an opportunity for a single shot/goal, but a player can only receive one per shot/goal.",
+    valueType: "integer",
     tone: "attack",
+    active: true,
   },
   {
+    id: "defensive-stop",
     code: "St",
     label: "Defensive Stop",
     detail:
       "Defensive stop in the penalty area that keeps possession, such as dribbling 5m past the box, earning a side/goal kick, or passing to a teammate with a chance to drive out.",
+    valueType: "integer",
     tone: "defense",
+    active: true,
   },
   {
+    id: "save",
     code: "Sv",
     label: "Save",
     detail:
       "Stopping a ball that otherwise would have gone in the goal. One save per shot/follow-through engagement.",
+    valueType: "integer",
     tone: "defense",
+    active: true,
   },
   {
+    id: "won-possession",
     code: "Wp",
     label: "Won Possession",
     detail:
       "Won possession and kept control by getting a side kick, 2-on-1, drawing a foul, or forcing the opposition to knock it out for a goal kick.",
+    valueType: "integer",
     tone: "possession",
+    active: true,
   },
   {
+    id: "positive-transition",
     code: "+",
     label: "Positive Transition",
     detail:
       "A pass or dribble that flips play from box to box or creates an attacking opportunity. Multiple players may receive one + for the transition.",
+    valueType: "integer",
     tone: "possession",
+    active: true,
   },
   {
+    id: "negative-transition",
     code: "-",
     label: "Negative Transition",
     detail:
       "A turnover or mistake that flips play from box to box or creates an attacking opportunity for the opposition.",
+    valueType: "integer",
     tone: "negative",
+    active: true,
   },
   {
+    id: "lost-possession",
     code: "Lp",
     label: "Lost Possession",
     detail:
       "Lost possession and allowed opposition control by giving up a side kick, 2-on-1, offensive foul, or goal kick.",
+    valueType: "integer",
     tone: "negative",
+    active: true,
   },
   {
+    id: "wasted-opportunity",
     code: "Wo",
     label: "Wasted Opportunity",
     detail:
       "Positioning mistake, missed technique, late reaction, or similar issue that wastes a good pass or opportunity.",
+    valueType: "integer",
     tone: "negative",
+    active: true,
   },
   {
+    id: "error-leading-to-chance",
     code: "Er",
     label: "Error Leading to Chance",
     detail:
       "Error leading to a goal or clear scoring chance requiring a save, such as a positioning mistake, lost 1-on-1, turnover, foul, or 2-on-1 near goal.",
+    valueType: "integer",
     tone: "negative",
+    active: true,
   },
   {
+    id: "foul",
     code: "Fl",
     label: "Foul",
     detail: "Foul.",
+    valueType: "integer",
     tone: "discipline",
+    active: true,
   },
   {
+    id: "two-on-one",
     code: "2o1",
     templateCode: "2on1",
     label: "2-on-1",
     detail: "Both involved players are assigned a 2-on-1 regardless of fault.",
+    valueType: "integer",
     tone: "discipline",
+    active: true,
   },
 ];
+
+export const STAT_VALUE_TYPES: StatValueType[] = ["integer", "decimal", "string", "boolean", "time"];
 
 export const ADVANCED_STATS = [
   "Pass success rate",
@@ -204,11 +270,54 @@ export const PLAY_MEMORY_GUIDE = [
   { set: "C", option1: "L", option2: "Center Drifts" },
 ];
 
+export const DEFAULT_PLAYS: PlayDefinition[] = [
+  {
+    id: "offensive-option-1",
+    name: "Offensive option 1",
+    type: "offense",
+    artUrl:
+      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733",
+    sourceUrl:
+      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733",
+    active: true,
+  },
+  {
+    id: "offensive-option-2",
+    name: "Offensive option 2",
+    type: "offense",
+    artUrl:
+      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733",
+    sourceUrl:
+      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_733#slide=id.g39cb69dda1a_0_733",
+    active: true,
+  },
+  {
+    id: "defensive-option-1",
+    name: "Defensive option 1",
+    type: "defense",
+    artUrl:
+      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708",
+    sourceUrl:
+      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708",
+    active: true,
+  },
+  {
+    id: "defensive-option-2",
+    name: "Defensive option 2",
+    type: "defense",
+    artUrl:
+      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708",
+    sourceUrl:
+      "https://docs.google.com/presentation/d/1wBEHBsox4MGr2oVqjm_64W5oeayWVubmGtGuTwDE9A4/edit?slide=id.g39cb69dda1a_0_708#slide=id.g39cb69dda1a_0_708",
+    active: true,
+  },
+];
+
 export function createEventId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function csvEscape(value: string | number | undefined) {
+export function csvEscape(value: string | number | boolean | undefined) {
   const raw = value === undefined ? "" : String(value);
   if (/[",\n]/.test(raw)) {
     return `"${raw.replaceAll('"', '""')}"`;
@@ -216,7 +325,7 @@ export function csvEscape(value: string | number | undefined) {
   return raw;
 }
 
-export function downloadCsv(filename: string, rows: Array<Array<string | number | undefined>>) {
+export function downloadCsv(filename: string, rows: Array<Array<string | number | boolean | undefined>>) {
   const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);

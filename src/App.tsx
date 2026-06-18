@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ADVANCED_STATS,
+  DEFAULT_PLAYS,
   DEFAULT_PLAYERS,
   PLAY_MEMORY_GUIDE,
   SET_PIECES,
   STAT_DEFINITIONS,
+  STAT_VALUE_TYPES,
   TIME_BUCKETS,
   TeamSide,
+  PlayDefinition,
+  PlayType,
   PlayerSlot,
+  StatDefinition,
   StatEvent,
+  StatValueType,
   createEventId,
   downloadCsv,
 } from "./stats";
@@ -27,12 +33,16 @@ type MatchState = {
   activeBucket: string;
   minute: string;
   note: string;
+  nextStatValue: string;
   video: VideoSyncState;
+  statDefinitions: StatDefinition[];
+  plays: PlayDefinition[];
   players: PlayerSlot[];
   events: StatEvent[];
 };
 
 const STORAGE_KEY = "power-soccer-stat-rater-v1";
+type AppPage = "tracker" | "settings";
 
 const initialState: MatchState = {
   homeTeam: "Rock",
@@ -40,10 +50,40 @@ const initialState: MatchState = {
   activeBucket: TIME_BUCKETS[0],
   minute: "0:00",
   note: "",
+  nextStatValue: "",
   video: DEFAULT_VIDEO_SYNC,
+  statDefinitions: STAT_DEFINITIONS,
+  plays: DEFAULT_PLAYS,
   players: DEFAULT_PLAYERS,
   events: [],
 };
+
+function normalizeStats(stats?: StatDefinition[]) {
+  if (!stats?.length) {
+    return STAT_DEFINITIONS;
+  }
+
+  return stats.map((stat, index) => ({
+    ...stat,
+    id: stat.id || `${stat.code || "stat"}-${index}`,
+    valueType: stat.valueType ?? "integer",
+    active: stat.active ?? true,
+  }));
+}
+
+function normalizePlays(plays?: PlayDefinition[]) {
+  if (!plays?.length) {
+    return DEFAULT_PLAYS;
+  }
+
+  return plays.map((play, index) => ({
+    ...play,
+    id: play.id || `play-${index}`,
+    type: play.type ?? "offense",
+    artUrl: play.artUrl ?? "",
+    active: play.active ?? true,
+  }));
+}
 
 function readStoredState(): MatchState {
   if (typeof window === "undefined") {
@@ -64,6 +104,9 @@ function readStoredState(): MatchState {
         ...initialState.video,
         ...(parsed.video ?? {}),
       },
+      nextStatValue: parsed.nextStatValue ?? "",
+      statDefinitions: normalizeStats(parsed.statDefinitions),
+      plays: normalizePlays(parsed.plays),
       players: parsed.players?.length ? parsed.players : initialState.players,
       events: parsed.events ?? [],
     };
@@ -74,9 +117,13 @@ function readStoredState(): MatchState {
 
 function App() {
   const [match, setMatch] = useState<MatchState>(() => readStoredState());
+  const [page, setPage] = useState<AppPage>("tracker");
   const [selectedSetPiece, setSelectedSetPiece] = useState(SET_PIECES[0].code);
   const [setPieceTeam, setSetPieceTeam] = useState<TeamSide>("home");
   const [setPieceRating, setSetPieceRating] = useState(3);
+  const [playTeam, setPlayTeam] = useState<TeamSide>("home");
+  const [playType, setPlayType] = useState<PlayType>("offense");
+  const [selectedPlayId, setSelectedPlayId] = useState(DEFAULT_PLAYS[0].id);
   const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
 
   const onVideoTimeChange = useCallback((seconds: number) => {
@@ -91,6 +138,22 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(match));
   }, [match]);
+
+  const activeStats = useMemo(
+    () => match.statDefinitions.filter((stat) => stat.active),
+    [match.statDefinitions],
+  );
+
+  const activePlays = useMemo(
+    () => match.plays.filter((play) => play.active && play.type === playType),
+    [match.plays, playType],
+  );
+
+  useEffect(() => {
+    if (activePlays.length && !activePlays.some((play) => play.id === selectedPlayId)) {
+      setSelectedPlayId(activePlays[0].id);
+    }
+  }, [activePlays, selectedPlayId]);
 
   useEffect(() => {
     if (!match.video.syncEnabled) {
@@ -186,10 +249,79 @@ function App() {
     }));
   };
 
+  const updateStatDefinition = (statId: string, patch: Partial<StatDefinition>) => {
+    setMatch((current) => ({
+      ...current,
+      statDefinitions: current.statDefinitions.map((stat) =>
+        stat.id === statId ? { ...stat, ...patch } : stat,
+      ),
+    }));
+  };
+
+  const addStatDefinition = () => {
+    const id = createEventId();
+    setMatch((current) => ({
+      ...current,
+      statDefinitions: [
+        ...current.statDefinitions,
+        {
+          id,
+          code: "New",
+          label: "New stat",
+          detail: "Describe this stat.",
+          valueType: "integer",
+          tone: "possession",
+          active: true,
+        },
+      ],
+    }));
+  };
+
+  const removeStatDefinition = (statId: string) => {
+    setMatch((current) => ({
+      ...current,
+      statDefinitions: current.statDefinitions.filter((stat) => stat.id !== statId),
+    }));
+  };
+
+  const updatePlayDefinition = (playId: string, patch: Partial<PlayDefinition>) => {
+    setMatch((current) => ({
+      ...current,
+      plays: current.plays.map((play) => (play.id === playId ? { ...play, ...patch } : play)),
+    }));
+  };
+
+  const addPlayDefinition = (type: PlayType) => {
+    const id = createEventId();
+    setMatch((current) => ({
+      ...current,
+      plays: [
+        ...current.plays,
+        {
+          id,
+          name: type === "offense" ? "New offensive play" : "New defensive play",
+          type,
+          artUrl: "",
+          active: true,
+        },
+      ],
+    }));
+    setPlayType(type);
+    setSelectedPlayId(id);
+  };
+
+  const removePlayDefinition = (playId: string) => {
+    setMatch((current) => ({
+      ...current,
+      plays: current.plays.filter((play) => play.id !== playId),
+    }));
+  };
+
   const addEvent = (event: Omit<StatEvent, "id" | "bucket" | "minute" | "note" | "recordedAt">) => {
     setMatch((current) => ({
       ...current,
       note: "",
+      nextStatValue: "",
       events: [
         {
           ...event,
@@ -210,7 +342,7 @@ function App() {
   };
 
   const addStatEvent = (player: PlayerSlot, statCode: string) => {
-    const stat = STAT_DEFINITIONS.find((definition) => definition.code === statCode);
+    const stat = match.statDefinitions.find((definition) => definition.code === statCode);
     if (!stat) {
       return;
     }
@@ -223,6 +355,8 @@ function App() {
       playerRole: player.role,
       statCode: stat.code,
       statLabel: stat.label,
+      statValueType: stat.valueType,
+      statValue: match.nextStatValue || (stat.valueType === "integer" ? "1" : ""),
     });
   };
 
@@ -246,6 +380,22 @@ function App() {
       kind: "note",
       team: setPieceTeam,
       statLabel: tag,
+    });
+  };
+
+  const addPlayEvent = () => {
+    const play = match.plays.find((candidate) => candidate.id === selectedPlayId);
+    if (!play) {
+      return;
+    }
+
+    addEvent({
+      kind: "play",
+      team: playTeam,
+      playId: play.id,
+      playName: play.name,
+      playType: play.type,
+      playArtUrl: play.artUrl,
     });
   };
 
@@ -298,6 +448,9 @@ function App() {
     setSelectedSetPiece(SET_PIECES[0].code);
     setSetPieceTeam("home");
     setSetPieceRating(3);
+    setPlayTeam("home");
+    setPlayType("offense");
+    setSelectedPlayId(DEFAULT_PLAYS[0].id);
     setCurrentVideoSeconds(0);
   };
 
@@ -317,7 +470,11 @@ function App() {
         "Kind",
         "Code",
         "Label",
+        "Value Type",
+        "Value",
         "Set Piece Rating",
+        "Play Type",
+        "Play Art URL",
         "Note",
       ],
       ...match.events
@@ -335,9 +492,13 @@ function App() {
           event.playerName,
           event.playerRole,
           event.kind,
-          event.statCode ?? event.setPieceCode,
-          event.statLabel ?? event.setPieceLabel,
+          event.statCode ?? event.setPieceCode ?? event.playId,
+          event.statLabel ?? event.setPieceLabel ?? event.playName,
+          event.statValueType,
+          event.statValue,
           event.setPieceRating,
+          event.playType,
+          event.playArtUrl,
           event.note,
         ]),
     ]);
@@ -349,7 +510,7 @@ function App() {
       "Player",
       "Role",
       "Time",
-      ...STAT_DEFINITIONS.map((stat) => stat.templateCode ?? stat.code),
+      ...activeStats.map((stat) => stat.templateCode ?? stat.code),
     ];
     const rows = match.players.flatMap((player) =>
       TIME_BUCKETS.map((bucket) => [
@@ -357,7 +518,7 @@ function App() {
         player.name,
         player.role,
         bucket,
-        ...STAT_DEFINITIONS.map(
+        ...activeStats.map(
           (stat) => statSummary.get([player.team, player.id, bucket, stat.code].join("|")) ?? "",
         ),
       ]),
@@ -368,7 +529,7 @@ function App() {
   const teamName = (team: TeamSide) => (team === "home" ? match.homeTeam : match.awayTeam);
   const homePlayers = match.players.filter((player) => player.team === "home");
   const awayPlayers = match.players.filter((player) => player.team === "away");
-  const latestEvents = match.events.slice(0, 20);
+  const latestEvents = match.events.slice(0, 10);
 
   return (
     <main className="app-shell">
@@ -394,6 +555,36 @@ function App() {
         </div>
       </header>
 
+      <nav className="page-tabs" aria-label="App pages">
+        <button
+          type="button"
+          className={page === "tracker" ? "tab-button active" : "tab-button"}
+          onClick={() => setPage("tracker")}
+        >
+          Tracker
+        </button>
+        <button
+          type="button"
+          className={page === "settings" ? "tab-button active" : "tab-button"}
+          onClick={() => setPage("settings")}
+        >
+          Stats & plays settings
+        </button>
+      </nav>
+
+      {page === "settings" ? (
+        <StatsSettingsPage
+          stats={match.statDefinitions}
+          plays={match.plays}
+          onStatChange={updateStatDefinition}
+          onStatAdd={addStatDefinition}
+          onStatRemove={removeStatDefinition}
+          onPlayChange={updatePlayDefinition}
+          onPlayAdd={addPlayDefinition}
+          onPlayRemove={removePlayDefinition}
+        />
+      ) : (
+        <>
       <section className="panel video-sync-panel" aria-labelledby="video-title">
         <div className="section-heading-row">
           <div>
@@ -576,18 +767,28 @@ function App() {
             placeholder="Optional detail, e.g. left wall set, 2-on-1 near own box, big chance..."
           />
         </label>
+        <label>
+          Value for next stat
+          <input
+            value={match.nextStatValue}
+            onChange={(event) => updateMatch("nextStatValue", event.target.value)}
+            placeholder="Optional: used for string/decimal/time stats; integer stats default to 1"
+          />
+        </label>
       </section>
 
       <section className="columns">
         <PlayerTeamPanel
           title={match.homeTeam}
           players={homePlayers}
+          stats={activeStats}
           onPlayerChange={updatePlayer}
           onStat={addStatEvent}
         />
         <PlayerTeamPanel
           title={match.awayTeam}
           players={awayPlayers}
+          stats={activeStats}
           onPlayerChange={updatePlayer}
           onStat={addStatEvent}
         />
@@ -648,6 +849,65 @@ function App() {
           </div>
         </section>
 
+        <section className="panel play-tag-panel" aria-labelledby="play-tag-title">
+          <p className="section-kicker">Play tagging</p>
+          <h2 id="play-tag-title">Tag team play</h2>
+          <p className="muted">
+            Select the play a team is running. Add or edit play names, types, and art links in
+            Stats & plays settings.
+          </p>
+          <div className="play-controls">
+            <label>
+              Team
+              <select value={playTeam} onChange={(event) => setPlayTeam(event.target.value as TeamSide)}>
+                <option value="home">{match.homeTeam}</option>
+                <option value="away">{match.awayTeam}</option>
+              </select>
+            </label>
+            <label>
+              Play type
+              <select value={playType} onChange={(event) => setPlayType(event.target.value as PlayType)}>
+                <option value="offense">Offense</option>
+                <option value="defense">Defense</option>
+              </select>
+            </label>
+            <label>
+              Play
+              <select
+                value={selectedPlayId}
+                onChange={(event) => setSelectedPlayId(event.target.value)}
+                disabled={!activePlays.length}
+              >
+                {activePlays.map((play) => (
+                  <option key={play.id} value={play.id}>
+                    {play.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="button" className="primary-action" onClick={addPlayEvent} disabled={!activePlays.length}>
+              Tag play
+            </button>
+          </div>
+          {activePlays.length ? (
+            <div className="play-card-grid">
+              {activePlays.map((play) => (
+                <button
+                  type="button"
+                  className={play.id === selectedPlayId ? "play-option active" : "play-option"}
+                  key={play.id}
+                  onClick={() => setSelectedPlayId(play.id)}
+                >
+                  <strong>{play.name}</strong>
+                  <span>{play.artUrl ? "Art linked" : "No art link"}</span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="empty-state">No active {playType} plays. Add one in settings.</p>
+          )}
+        </section>
+
         <section className="panel" aria-labelledby="advanced-title">
           <p className="section-kicker">Extra tags</p>
           <h2 id="advanced-title">Capture advanced observations</h2>
@@ -686,7 +946,7 @@ function App() {
               <thead>
                 <tr>
                   <th>Team</th>
-                  {STAT_DEFINITIONS.map((stat) => (
+                  {activeStats.map((stat) => (
                     <th title={stat.label} key={stat.code}>
                       {stat.templateCode ?? stat.code}
                     </th>
@@ -697,7 +957,7 @@ function App() {
                 {(["home", "away"] as TeamSide[]).map((team) => (
                   <tr key={team}>
                     <th>{teamName(team)}</th>
-                    {STAT_DEFINITIONS.map((stat) => (
+                    {activeStats.map((stat) => (
                       <td key={stat.code}>{teamTotals.get([team, stat.code].join("|")) ?? 0}</td>
                     ))}
                   </tr>
@@ -728,54 +988,22 @@ function App() {
           </div>
         </section>
 
-        <section className="panel" aria-labelledby="event-log-title">
-          <div className="section-heading-row">
-            <div>
-              <p className="section-kicker">Audit trail</p>
-              <h2 id="event-log-title">Latest entries</h2>
-            </div>
-            <button type="button" className="danger" onClick={resetMatch}>
-              Reset match
-            </button>
-          </div>
-          {latestEvents.length === 0 ? (
-            <p className="empty-state">No events yet. Tap a player stat to start collecting.</p>
-          ) : (
-            <div className="event-list">
-              {latestEvents.map((event) => (
-                <article className="event-card" key={event.id}>
-                  <div>
-                    <span className="event-code">
-                      {event.statCode ?? event.setPieceCode ?? "Note"}
-                    </span>
-                    <strong>
-                      {event.playerName ?? teamName(event.team)}{" "}
-                      <small>{event.statLabel ?? event.setPieceLabel}</small>
-                    </strong>
-                    <p>
-                      {event.bucket} / {event.minute}
-                      {event.half ? ` / ${event.half}` : ""}
-                      {event.videoSeconds !== undefined ? ` / video ${formatClock(event.videoSeconds)}` : ""}
-                      {event.setPieceRating ? ` / outcome ${event.setPieceRating}` : ""}
-                      {event.note ? ` - ${event.note}` : ""}
-                    </p>
-                  </div>
-                  <button type="button" onClick={() => deleteEvent(event.id)}>
-                    Delete
-                  </button>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+        <EventLog
+          events={latestEvents}
+          title="Latest entries"
+          description="Most recent stats, plays, set pieces, and notes."
+          teamName={teamName}
+          onDelete={deleteEvent}
+          onReset={resetMatch}
+        />
       </section>
 
       <section className="panel definitions-panel" aria-labelledby="definitions-title">
         <p className="section-kicker">Definitions tab</p>
         <h2 id="definitions-title">Stat reference</h2>
         <div className="definition-list">
-          {STAT_DEFINITIONS.map((stat) => (
-            <div key={stat.code} className={`definition-item tone-${stat.tone}`}>
+          {match.statDefinitions.map((stat) => (
+            <div key={stat.id} className={`definition-item tone-${stat.tone}`}>
               <strong>{stat.templateCode ?? stat.code}</strong>
               <span>
                 {stat.label}: {stat.detail}
@@ -794,6 +1022,16 @@ function App() {
           ))}
         </div>
       </section>
+
+      <EventLog
+        events={match.events}
+        title="Full event log"
+        description="All plays, stats, set pieces, and notes recorded for this match."
+        teamName={teamName}
+        onDelete={deleteEvent}
+      />
+        </>
+      )}
     </main>
   );
 }
@@ -801,6 +1039,7 @@ function App() {
 type PlayerTeamPanelProps = {
   title: string;
   players: PlayerSlot[];
+  stats: StatDefinition[];
   onPlayerChange: (playerId: string, patch: Partial<PlayerSlot>) => void;
   onStat: (player: PlayerSlot, statCode: string) => void;
 };
@@ -809,6 +1048,14 @@ type AnchorRowProps = {
   label: string;
   seconds?: number;
 };
+
+const STAT_TONES: StatDefinition["tone"][] = [
+  "attack",
+  "defense",
+  "possession",
+  "negative",
+  "discipline",
+];
 
 function AnchorRow({ label, seconds }: AnchorRowProps) {
   return (
@@ -819,7 +1066,310 @@ function AnchorRow({ label, seconds }: AnchorRowProps) {
   );
 }
 
-function PlayerTeamPanel({ title, players, onPlayerChange, onStat }: PlayerTeamPanelProps) {
+type EventLogProps = {
+  events: StatEvent[];
+  title: string;
+  description: string;
+  teamName: (team: TeamSide) => string;
+  onDelete: (eventId: string) => void;
+  onReset?: () => void;
+};
+
+function eventCode(event: StatEvent) {
+  if (event.kind === "stat") {
+    return event.statCode ?? "STAT";
+  }
+  if (event.kind === "play") {
+    return event.playType === "defense" ? "DEF" : "OFF";
+  }
+  if (event.kind === "set-piece") {
+    return event.setPieceCode ?? "SET";
+  }
+  return "NOTE";
+}
+
+function eventTitle(event: StatEvent, teamName: (team: TeamSide) => string) {
+  if (event.kind === "stat") {
+    return `${event.playerName ?? teamName(event.team)} - ${event.statLabel ?? event.statCode}`;
+  }
+  if (event.kind === "play") {
+    return `${teamName(event.team)} - ${event.playName ?? "Play"}`;
+  }
+  if (event.kind === "set-piece") {
+    return `${teamName(event.team)} - ${event.setPieceLabel ?? event.setPieceCode}`;
+  }
+  return `${teamName(event.team)} - ${event.statLabel ?? "Note"}`;
+}
+
+function EventLog({ events, title, description, teamName, onDelete, onReset }: EventLogProps) {
+  return (
+    <section className="panel event-log-panel" aria-labelledby={`${title.replaceAll(" ", "-")}-title`}>
+      <div className="section-heading-row">
+        <div>
+          <p className="section-kicker">Event log</p>
+          <h2 id={`${title.replaceAll(" ", "-")}-title`}>{title}</h2>
+          <p className="muted">{description}</p>
+        </div>
+        {onReset ? (
+          <button type="button" className="danger" onClick={onReset}>
+            Reset match
+          </button>
+        ) : null}
+      </div>
+      {events.length === 0 ? (
+        <p className="empty-state">No events yet. Tap a player stat, tag a play, or add a note.</p>
+      ) : (
+        <div className="event-list">
+          {events.map((event) => (
+            <article className={`event-card event-kind-${event.kind}`} key={event.id}>
+              <div className="event-main">
+                <span className="event-code">{eventCode(event)}</span>
+                <div>
+                  <strong>
+                    {eventTitle(event, teamName)} <small>{event.kind}</small>
+                  </strong>
+                  <p>
+                    {event.bucket} / {event.minute}
+                    {event.half ? ` / ${event.half}` : ""}
+                    {event.videoSeconds !== undefined ? ` / video ${formatClock(event.videoSeconds)}` : ""}
+                    {event.statValue ? ` / value ${event.statValue}` : ""}
+                    {event.setPieceRating ? ` / outcome ${event.setPieceRating}` : ""}
+                    {event.note ? ` - ${event.note}` : ""}
+                  </p>
+                  {event.playArtUrl ? (
+                    <a href={event.playArtUrl} target="_blank" rel="noreferrer">
+                      Open play art
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+              <button type="button" onClick={() => onDelete(event.id)}>
+                Delete
+              </button>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+type StatsSettingsPageProps = {
+  stats: StatDefinition[];
+  plays: PlayDefinition[];
+  onStatChange: (statId: string, patch: Partial<StatDefinition>) => void;
+  onStatAdd: () => void;
+  onStatRemove: (statId: string) => void;
+  onPlayChange: (playId: string, patch: Partial<PlayDefinition>) => void;
+  onPlayAdd: (type: PlayType) => void;
+  onPlayRemove: (playId: string) => void;
+};
+
+function StatsSettingsPage({
+  stats,
+  plays,
+  onStatChange,
+  onStatAdd,
+  onStatRemove,
+  onPlayChange,
+  onPlayAdd,
+  onPlayRemove,
+}: StatsSettingsPageProps) {
+  return (
+    <section className="settings-page">
+      <section className="panel" aria-labelledby="stat-settings-title">
+        <div className="section-heading-row">
+          <div>
+            <p className="section-kicker">Definitions</p>
+            <h2 id="stat-settings-title">Editable stat definitions</h2>
+            <p className="muted">
+              Modify abbreviations, names, definitions, value types, display colors, and whether a
+              stat appears on rater buttons.
+            </p>
+          </div>
+          <button type="button" className="primary-action" onClick={onStatAdd}>
+            Add stat
+          </button>
+        </div>
+        <div className="editable-list">
+          {stats.map((stat) => (
+            <article className="editable-card" key={stat.id}>
+              <div className="settings-grid">
+                <label>
+                  Active
+                  <select
+                    value={stat.active ? "yes" : "no"}
+                    onChange={(event) => onStatChange(stat.id, { active: event.target.value === "yes" })}
+                  >
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </label>
+                <label>
+                  Abbrev
+                  <input
+                    value={stat.code}
+                    onChange={(event) => onStatChange(stat.id, { code: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Template code
+                  <input
+                    value={stat.templateCode ?? ""}
+                    onChange={(event) =>
+                      onStatChange(stat.id, { templateCode: event.target.value || undefined })
+                    }
+                  />
+                </label>
+                <label>
+                  Name
+                  <input
+                    value={stat.label}
+                    onChange={(event) => onStatChange(stat.id, { label: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Value type
+                  <select
+                    value={stat.valueType}
+                    onChange={(event) =>
+                      onStatChange(stat.id, { valueType: event.target.value as StatValueType })
+                    }
+                  >
+                    {STAT_VALUE_TYPES.map((type) => (
+                      <option value={type} key={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Color group
+                  <select
+                    value={stat.tone}
+                    onChange={(event) =>
+                      onStatChange(stat.id, { tone: event.target.value as StatDefinition["tone"] })
+                    }
+                  >
+                    {STAT_TONES.map((tone) => (
+                      <option value={tone} key={tone}>
+                        {tone}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label>
+                Definition
+                <textarea
+                  value={stat.detail}
+                  onChange={(event) => onStatChange(stat.id, { detail: event.target.value })}
+                />
+              </label>
+              <div className="editable-card-footer">
+                <span className={`definition-pill tone-${stat.tone}`}>
+                  {stat.templateCode ?? stat.code} / {stat.valueType}
+                </span>
+                <button type="button" className="danger" onClick={() => onStatRemove(stat.id)}>
+                  Delete stat
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel" aria-labelledby="play-settings-title">
+        <div className="section-heading-row">
+          <div>
+            <p className="section-kicker">Play library</p>
+            <h2 id="play-settings-title">Editable plays and art links</h2>
+            <p className="muted">
+              The linked Google Slides required sign-in from this environment, so default play names
+              are placeholders. Update names and art links here when the playbook is available.
+            </p>
+          </div>
+          <div className="action-row">
+            <button type="button" onClick={() => onPlayAdd("offense")}>
+              Add offensive play
+            </button>
+            <button type="button" onClick={() => onPlayAdd("defense")}>
+              Add defensive play
+            </button>
+          </div>
+        </div>
+        <div className="editable-list">
+          {plays.map((play) => (
+            <article className={`editable-card play-edit-card play-${play.type}`} key={play.id}>
+              <div className="settings-grid">
+                <label>
+                  Active
+                  <select
+                    value={play.active ? "yes" : "no"}
+                    onChange={(event) => onPlayChange(play.id, { active: event.target.value === "yes" })}
+                  >
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </label>
+                <label>
+                  Name
+                  <input
+                    value={play.name}
+                    onChange={(event) => onPlayChange(play.id, { name: event.target.value })}
+                  />
+                </label>
+                <label>
+                  Type
+                  <select
+                    value={play.type}
+                    onChange={(event) => onPlayChange(play.id, { type: event.target.value as PlayType })}
+                  >
+                    <option value="offense">Offense</option>
+                    <option value="defense">Defense</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                Play art link
+                <input
+                  value={play.artUrl}
+                  onChange={(event) => onPlayChange(play.id, { artUrl: event.target.value })}
+                  placeholder="https://..."
+                />
+              </label>
+              <label>
+                Source link
+                <input
+                  value={play.sourceUrl ?? ""}
+                  onChange={(event) =>
+                    onPlayChange(play.id, { sourceUrl: event.target.value || undefined })
+                  }
+                  placeholder="Optional source deck or document"
+                />
+              </label>
+              <div className="editable-card-footer">
+                <span className={`play-pill play-${play.type}`}>{play.type}</span>
+                <div className="action-row">
+                  {play.artUrl ? (
+                    <a href={play.artUrl} target="_blank" rel="noreferrer">
+                      Open art
+                    </a>
+                  ) : null}
+                  <button type="button" className="danger" onClick={() => onPlayRemove(play.id)}>
+                    Delete play
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function PlayerTeamPanel({ title, players, stats, onPlayerChange, onStat }: PlayerTeamPanelProps) {
   return (
     <section className="panel player-panel" aria-labelledby={`${title}-players`}>
       <p className="section-kicker">Quick entry</p>
@@ -844,7 +1394,7 @@ function PlayerTeamPanel({ title, players, onPlayerChange, onStat }: PlayerTeamP
               </label>
             </div>
             <div className="stat-button-grid">
-              {STAT_DEFINITIONS.map((stat) => (
+              {stats.map((stat) => (
                 <button
                   type="button"
                   className={`stat-button tone-${stat.tone}`}
