@@ -117,3 +117,8 @@ The default offensive and defensive play names are seeded from the linked Google
 ## Adapted stat ideas
 
 Additional default stats adapt applicable ideas from the DataMB guide to power soccer, including progressive passes/carries, pass outcomes, key passes, shot assists, interceptions, shot blocks, duels won/lost, fouls suffered, cards, free kicks, penalties, and power-soccer-specific 2-on-1 / goal-area positioning outcomes. Soccer-only concepts such as aerial duels, headed goals, and offsides are intentionally excluded.
+
+## Additional documentation
+
+- [Architecture and runtime notes](docs/architecture.md)
+- [Rater workflow and stat taxonomy notes](docs/rater-workflow-and-stat-taxonomy.md)
