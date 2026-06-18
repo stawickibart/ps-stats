@@ -52,7 +52,8 @@ type MatchState = {
 };
 
 const STORAGE_KEY = "power-soccer-stat-rater-v1";
-type AppPage = "tracker" | "settings" | "knowledge";
+type UserRole = "rater" | "admin";
+type AppPage = "tracker" | "admin-overview" | "settings" | "knowledge" | "game-review";
 type StatTotals = Record<string, number>;
 type NoticeTone = "info" | "warning" | "error" | "success";
 type ActivePossession = PossessionOwner | "unset";
@@ -153,6 +154,8 @@ type GameSnapshot = {
     ratings: RatingScores;
   }>;
   possession: Record<PossessionOwner, number>;
+  possessionSegments: PossessionSegment[];
+  events: StatEvent[];
   eventCount: number;
 };
 
@@ -360,6 +363,8 @@ function normalizeKnowledgeBase(knowledgeBase?: KnowledgeBase) {
       knowledgeBase?.games.map((game) => ({
         ...game,
         teamPlayStyles: game.teamPlayStyles ?? { home: {}, away: {} },
+        possessionSegments: game.possessionSegments ?? [],
+        events: game.events ?? [],
       })) ?? [],
   };
 }
@@ -661,6 +666,8 @@ function buildGameSnapshot(match: MatchState) {
     teamPlayStyles,
     playerStats: playerRows,
     possession,
+    possessionSegments: match.possessionSegments,
+    events: match.events,
     eventCount: match.events.length,
   };
 }
@@ -917,6 +924,7 @@ function readStoredState(): MatchState {
 
 function App() {
   const [match, setMatch] = useState<MatchState>(() => readStoredState());
+  const [role, setRole] = useState<UserRole | null>(null);
   const [page, setPage] = useState<AppPage>("tracker");
   const [notices, setNotices] = useState<AppNotice[]>([]);
   const [selectedSetPiece, setSelectedSetPiece] = useState(SET_PIECES[0].code);
@@ -1826,6 +1834,49 @@ function App() {
   const awayPlayers = match.players.filter((player) => player.team === "away");
   const latestEvents = match.events.slice(0, 10);
 
+  if (!role) {
+    return (
+      <main className="app-shell">
+        <header className="hero">
+          <div>
+            <p className="eyebrow">Power soccer stat collection</p>
+            <h1>Choose workspace</h1>
+            <p className="hero-copy">
+              Continue as a rater to tag a match video, or enter the admin workspace for setup,
+              summaries, knowledge-base review, and tagged-game analysis.
+            </p>
+          </div>
+        </header>
+        <section className="role-choice-grid">
+          <button
+            type="button"
+            className="role-card"
+            onClick={() => {
+              setRole("rater");
+              setPage("tracker");
+            }}
+          >
+            <span>Rater</span>
+            <strong>Video + data collection</strong>
+            <p>Use the video player, time tracking, event form, set pieces, and play tagging.</p>
+          </button>
+          <button
+            type="button"
+            className="role-card"
+            onClick={() => {
+              setRole("admin");
+              setPage("admin-overview");
+            }}
+          >
+            <span>Admin</span>
+            <strong>Setup + review tools</strong>
+            <p>Manage stats/plays, view summaries, inspect tagged games, and browse the knowledge base.</p>
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="hero">
@@ -1851,26 +1902,44 @@ function App() {
       </header>
 
       <nav className="page-tabs" aria-label="App pages">
-        <button
-          type="button"
-          className={page === "tracker" ? "tab-button active" : "tab-button"}
-          onClick={() => setPage("tracker")}
-        >
-          Tracker
-        </button>
-        <button
-          type="button"
-          className={page === "settings" ? "tab-button active" : "tab-button"}
-          onClick={() => setPage("settings")}
-        >
-          Stats & plays settings
-        </button>
-        <button
-          type="button"
-          className={page === "knowledge" ? "tab-button active" : "tab-button"}
-          onClick={() => setPage("knowledge")}
-        >
-          Knowledge base
+        {role === "rater" ? (
+          <button type="button" className="tab-button active" onClick={() => setPage("tracker")}>
+            Rater workspace
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={page === "admin-overview" ? "tab-button active" : "tab-button"}
+              onClick={() => setPage("admin-overview")}
+            >
+              Admin overview
+            </button>
+            <button
+              type="button"
+              className={page === "settings" ? "tab-button active" : "tab-button"}
+              onClick={() => setPage("settings")}
+            >
+              Stats & plays settings
+            </button>
+            <button
+              type="button"
+              className={page === "knowledge" ? "tab-button active" : "tab-button"}
+              onClick={() => setPage("knowledge")}
+            >
+              Knowledge base
+            </button>
+            <button
+              type="button"
+              className={page === "game-review" ? "tab-button active" : "tab-button"}
+              onClick={() => setPage("game-review")}
+            >
+              Tagged game view
+            </button>
+          </>
+        )}
+        <button type="button" className="tab-button" onClick={() => setRole(null)}>
+          Switch role
         </button>
       </nav>
 
@@ -1883,7 +1952,21 @@ function App() {
         </section>
       ) : null}
 
-      {page === "settings" ? (
+      {page === "admin-overview" ? (
+        <AdminOverviewPage
+          match={match}
+          activeStats={activeStats}
+          teamTotals={teamTotals}
+          setPieceTotals={setPieceTotals}
+          latestEvents={latestEvents}
+          teamName={teamName}
+          onFinishGame={finishGame}
+          onExportSummary={exportSummary}
+          onExportEvents={exportEvents}
+          onDeleteEvent={deleteEvent}
+          onResetMatch={resetMatch}
+        />
+      ) : page === "settings" ? (
         <StatsSettingsPage
           stats={match.statDefinitions}
           plays={match.plays}
@@ -1896,6 +1979,8 @@ function App() {
         />
       ) : page === "knowledge" ? (
         <KnowledgeBasePage knowledgeBase={match.knowledgeBase} statDefinitions={match.statDefinitions} />
+      ) : page === "game-review" ? (
+        <TaggedGameViewPage knowledgeBase={match.knowledgeBase} teamName={teamName} />
       ) : (
         <>
       <section className="panel video-sync-panel" aria-labelledby="video-title">
@@ -2288,6 +2373,8 @@ function App() {
         </section>
       </section>
 
+      {role === "admin" ? (
+        <>
       <section className="columns secondary-columns">
         <section className="panel" aria-labelledby="summary-title">
           <div className="section-heading-row">
@@ -2396,6 +2483,8 @@ function App() {
         teamName={teamName}
         onDelete={deleteEvent}
       />
+        </>
+      ) : null}
         </>
       )}
     </main>
@@ -3018,6 +3107,243 @@ function EventCapturePanel({
           Record event
         </button>
       </div>
+    </section>
+  );
+}
+
+type AdminOverviewPageProps = {
+  match: MatchState;
+  activeStats: StatDefinition[];
+  teamTotals: Map<string, number>;
+  setPieceTotals: Map<string, number>;
+  latestEvents: StatEvent[];
+  teamName: (team: TeamSide) => string;
+  onFinishGame: () => void;
+  onExportSummary: () => void;
+  onExportEvents: () => void;
+  onDeleteEvent: (eventId: string) => void;
+  onResetMatch: () => void;
+};
+
+function AdminOverviewPage({
+  match,
+  activeStats,
+  teamTotals,
+  setPieceTotals,
+  latestEvents,
+  teamName,
+  onFinishGame,
+  onExportSummary,
+  onExportEvents,
+  onDeleteEvent,
+  onResetMatch,
+}: AdminOverviewPageProps) {
+  return (
+    <>
+      <section className="columns secondary-columns">
+        <section className="panel" aria-labelledby="summary-title">
+          <div className="section-heading-row">
+            <div>
+              <p className="section-kicker">Admin overview</p>
+              <h2 id="summary-title">Team stat totals</h2>
+            </div>
+            <div className="action-row">
+              <button type="button" className="primary-action" onClick={onFinishGame}>
+                Finish game & update knowledge base
+              </button>
+              <button type="button" onClick={onExportSummary}>
+                Export summary CSV
+              </button>
+              <button type="button" onClick={onExportEvents}>
+                Export event CSV
+              </button>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Team</th>
+                  {activeStats.map((stat) => (
+                    <th title={stat.label} key={stat.code}>
+                      {stat.templateCode ?? stat.code}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(["home", "away"] as TeamSide[]).map((team) => (
+                  <tr key={team}>
+                    <th>{teamName(team)}</th>
+                    {activeStats.map((stat) => (
+                      <td key={stat.code}>{teamTotals.get([team, stat.code].join("|")) ?? 0}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Set-piece totals</h3>
+          <div className="set-piece-summary">
+            {SET_PIECES.map((piece) => (
+              <div key={piece.code} className="mini-card">
+                <strong>{piece.code}</strong>
+                <span>
+                  {(["home", "away"] as TeamSide[])
+                    .map((team) => {
+                      const total = [1, 2, 3, 4, 5].reduce(
+                        (sum, rating) =>
+                          sum + (setPieceTotals.get([team, piece.code, rating].join("|")) ?? 0),
+                        0,
+                      );
+                      return `${teamName(team)} ${total}`;
+                    })
+                    .join(" / ")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <EventLog
+          events={latestEvents}
+          title="Latest entries"
+          description="Most recent stats, plays, set pieces, and notes."
+          teamName={teamName}
+          onDelete={onDeleteEvent}
+          onReset={onResetMatch}
+        />
+      </section>
+
+      <section className="panel definitions-panel" aria-labelledby="definitions-title">
+        <p className="section-kicker">Definitions tab</p>
+        <h2 id="definitions-title">Stat reference</h2>
+        <div className="definition-list">
+          {match.statDefinitions.map((stat) => (
+            <div key={stat.id} className={`definition-item tone-${stat.tone}`}>
+              <strong>{stat.templateCode ?? stat.code}</strong>
+              <span>
+                {stat.label}: {stat.detail}
+              </span>
+            </div>
+          ))}
+        </div>
+        <h3>Play memory guide</h3>
+        <div className="memory-grid">
+          {PLAY_MEMORY_GUIDE.map((item) => (
+            <div key={item.set} className="mini-card">
+              <strong>{item.set}</strong>
+              <span>{item.option1}</span>
+              <span>{item.option2}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <EventLog
+        events={match.events}
+        title="Full event log"
+        description="All plays, stats, set pieces, and notes recorded for this match."
+        teamName={teamName}
+        onDelete={onDeleteEvent}
+      />
+    </>
+  );
+}
+
+type TaggedGameViewPageProps = {
+  knowledgeBase: KnowledgeBase;
+  teamName: (team: TeamSide) => string;
+};
+
+function TaggedGameTimeline({
+  game,
+}: {
+  game: GameSnapshot;
+}) {
+  const timelineDuration = Math.max(...game.possessionSegments.map((segment) => segment.endSeconds), 1);
+  const gameTeamName = (team: TeamSide) => (team === "home" ? game.homeTeam : game.awayTeam);
+
+  return (
+    <section className="panel">
+      <p className="section-kicker">Possession timeline</p>
+      <h2>
+        {game.homeTeam} vs {game.awayTeam}
+      </h2>
+      {game.possessionSegments.length ? (
+        <>
+          <div className="possession-timeline review" aria-label="Tagged game possession timeline">
+            {game.possessionSegments.map((segment) => (
+              <div
+                className={`possession-segment possession-${segment.owner}`}
+                key={segment.id}
+                title={`${possessionLabel(segment.owner, game.homeTeam, game.awayTeam)} ${formatClock(
+                  segment.startSeconds,
+                )}-${formatClock(segment.endSeconds)} ${segment.participantPlayerNames.join(" vs ")}`}
+                style={{
+                  left: `${(segment.startSeconds / timelineDuration) * 100}%`,
+                  width: `${((segment.endSeconds - segment.startSeconds) / timelineDuration) * 100}%`,
+                }}
+              />
+            ))}
+          </div>
+          <div className="possession-legend">
+            <span className="legend-item possession-home">{game.homeTeam}</span>
+            <span className="legend-item possession-away">{game.awayTeam}</span>
+            <span className="legend-item possession-contested">Contested</span>
+            <span className="legend-item possession-out">Out of play</span>
+          </div>
+        </>
+      ) : (
+        <p className="empty-state">No possession timeline was saved for this game.</p>
+      )}
+      <EventLog
+        events={game.events}
+        title="Tagged event log"
+        description="Events saved when this game was finished."
+        teamName={gameTeamName}
+        onDelete={() => undefined}
+      />
+    </section>
+  );
+}
+
+function TaggedGameViewPage({ knowledgeBase }: TaggedGameViewPageProps) {
+  const [selectedGameId, setSelectedGameId] = useState("");
+  const selectedGame =
+    knowledgeBase.games.find((game) => game.id === selectedGameId) ?? knowledgeBase.games[0];
+
+  useEffect(() => {
+    if (knowledgeBase.games.length && !knowledgeBase.games.some((game) => game.id === selectedGameId)) {
+      setSelectedGameId(knowledgeBase.games[0].id);
+    }
+  }, [knowledgeBase.games, selectedGameId]);
+
+  return (
+    <section className="knowledge-page">
+      <section className="panel">
+        <p className="section-kicker">Tagged game view</p>
+        <h2>Review rater-tagged games</h2>
+        <p className="muted">
+          Select a finished game to review only its tagged possession timeline and event log.
+        </p>
+        {knowledgeBase.games.length ? (
+          <label>
+            Game
+            <select value={selectedGame?.id ?? ""} onChange={(event) => setSelectedGameId(event.target.value)}>
+              {knowledgeBase.games.map((game) => (
+                <option value={game.id} key={game.id}>
+                  {game.date} - {game.homeTeam} {game.homeScore} / {game.awayScore} {game.awayTeam}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p className="empty-state">No finished games yet. Finish a rater session to create a tagged game.</p>
+        )}
+      </section>
+      {selectedGame ? <TaggedGameTimeline game={selectedGame} /> : null}
     </section>
   );
 }

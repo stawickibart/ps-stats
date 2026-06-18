@@ -258,6 +258,41 @@ td:first-child {
   color: var(--primary-dark);
 }
 
+.role-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.role-card {
+  display: grid;
+  gap: 0.5rem;
+  min-height: 220px;
+  padding: clamp(1.2rem, 3vw, 2rem);
+  border-radius: 24px;
+  text-align: left;
+}
+
+.role-card span {
+  color: var(--primary);
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.role-card strong {
+  color: #101828;
+  font-size: clamp(1.5rem, 3vw, 2.3rem);
+  line-height: 1;
+}
+
+.role-card p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 0;
+}
+
 .notice-center {
   display: grid;
   gap: 0.75rem;
@@ -536,6 +571,10 @@ td:first-child {
       rgb(20 32 51 / 10%) 10%
     ),
     #eef3f8;
+}
+
+.possession-timeline.review {
+  margin: 1rem 0 0.75rem;
 }
 
 .possession-segment {
@@ -1205,6 +1244,7 @@ td:first-child {
 @media (max-width: 1180px) {
   .hero,
   .columns,
+  .role-choice-grid,
   .video-sync-grid,
   .setup-grid,
   .knowledge-layout,
