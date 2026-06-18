@@ -820,6 +820,10 @@ td:first-child {
   gap: 0.6rem;
 }
 
+.quick-event-grid.uncommon {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
 .quick-event-button {
   min-height: 54px;
   font-weight: 900;

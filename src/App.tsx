@@ -3401,6 +3401,16 @@ const EVENT_TYPE_OPTIONS: Array<{ value: Exclude<StructuredEventType, "">; label
   { value: "note", label: "Other / note" },
 ];
 
+const COMMON_EVENT_TYPES: Array<Exclude<StructuredEventType, "" | "note">> = [
+  "pass",
+  "dribble",
+  "shot",
+  "turnover",
+  "engagement",
+];
+
+const UNCOMMON_EVENT_TYPES: Array<Exclude<StructuredEventType, "">> = ["note"];
+
 const FIELD_DEPTH_OPTIONS = [
   { value: "own goal-line", label: "Own goal-line" },
   { value: "own box", label: "Own goal area" },
@@ -3669,6 +3679,7 @@ function EventCapturePanel({
   onSubmit,
 }: EventCapturePanelProps) {
   const [showCourtMap, setShowCourtMap] = useState(false);
+  const [showUncommonEvents, setShowUncommonEvents] = useState(false);
   const teamPlayers = players.filter((player) => player.team === form.team);
   const opponentPlayers = players.filter((player) => player.team !== form.team);
   const outcomeOptions = form.type ? OUTCOME_OPTIONS[form.type] : [];
@@ -3693,7 +3704,7 @@ function EventCapturePanel({
         </p>
       ) : null}
       <div className="quick-event-grid">
-        {EVENT_TYPE_OPTIONS.filter((option) => option.value).map((option) => (
+        {EVENT_TYPE_OPTIONS.filter((option) => COMMON_EVENT_TYPES.includes(option.value as Exclude<StructuredEventType, "" | "note">)).map((option) => (
           <button
             type="button"
             className={form.type === option.value ? "quick-event-button active" : "quick-event-button"}
@@ -3713,6 +3724,36 @@ function EventCapturePanel({
           </button>
         ))}
       </div>
+      {!showUncommonEvents ? (
+        <button type="button" onClick={() => setShowUncommonEvents(true)}>
+          Show uncommon / advanced event types
+        </button>
+      ) : (
+        <div className="quick-event-grid uncommon">
+          {EVENT_TYPE_OPTIONS.filter((option) => UNCOMMON_EVENT_TYPES.includes(option.value)).map((option) => (
+            <button
+              type="button"
+              className={form.type === option.value ? "quick-event-button active" : "quick-event-button"}
+              key={option.value}
+              onClick={() =>
+                onChange({
+                  type: option.value,
+                  outcome: OUTCOME_OPTIONS[option.value][0].value,
+                  primaryPlayerId: "",
+                  secondaryPlayerId: "",
+                  opponentPlayerId: "",
+                  direction: "",
+                })
+              }
+            >
+              {option.label}
+            </button>
+          ))}
+          <button type="button" onClick={() => setShowUncommonEvents(false)}>
+            Hide uncommon
+          </button>
+        </div>
+      )}
       {!form.type ? (
         <p className="empty-state">Choose what happened to reveal the event details.</p>
       ) : (
