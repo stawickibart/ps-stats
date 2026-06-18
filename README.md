@@ -17,6 +17,7 @@ A browser-based rater console for collecting power soccer match statistics while
 - Editable play library with offensive/defensive type, play name, play art link, and source link.
 - Unified event log with distinct visual treatments for stats, plays, set pieces, and notes.
 - Knowledge base for finished games, teams, players, divisions, prior stats, heuristic quality scores, and radar-style capability diagrams.
+- In-app notifications for invalid entries and competing information such as bad stat values, missing possession players, duplicate contested players, or incomplete game metadata.
 
 ## Run locally
 
@@ -29,6 +30,12 @@ Build for production:
 
 ```bash
 npm run build
+```
+
+Run tests:
+
+```bash
+npm test
 ```
 
 ## Rater workflow

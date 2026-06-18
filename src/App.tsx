@@ -26,6 +26,7 @@ import {
   VideoSyncState,
   deriveMatchTime,
   formatClock,
+  parseClockToSeconds,
   parseYouTubeVideoId,
 } from "./video";
 
@@ -53,6 +54,14 @@ type MatchState = {
 const STORAGE_KEY = "power-soccer-stat-rater-v1";
 type AppPage = "tracker" | "settings" | "knowledge";
 type StatTotals = Record<string, number>;
+type NoticeTone = "info" | "warning" | "error" | "success";
+
+type AppNotice = {
+  id: string;
+  tone: NoticeTone;
+  title: string;
+  message: string;
+};
 
 type PossessionSelection = {
   homePlayerId: string;
@@ -331,6 +340,31 @@ function emptyRatings(): RatingScores {
 function statValue(event: StatEvent) {
   const numeric = Number(event.statValue);
   return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+}
+
+function validateStatInput(valueType: StatValueType, value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (valueType === "integer" && !Number.isInteger(Number(trimmed))) {
+    return "Enter a whole number for this integer stat, or leave it blank to record 1.";
+  }
+
+  if (valueType === "decimal" && !Number.isFinite(Number(trimmed))) {
+    return "Enter a valid decimal number for this stat.";
+  }
+
+  if (valueType === "boolean" && !["true", "false", "yes", "no"].includes(trimmed.toLowerCase())) {
+    return "Enter true/false or yes/no for this boolean stat.";
+  }
+
+  if (valueType === "time" && parseClockToSeconds(trimmed) === undefined) {
+    return "Enter time values as minutes:seconds, for example 12:34.";
+  }
+
+  return undefined;
 }
 
 function addToTotals(totals: StatTotals, code: string, value: number) {
@@ -729,6 +763,7 @@ function readStoredState(): MatchState {
 function App() {
   const [match, setMatch] = useState<MatchState>(() => readStoredState());
   const [page, setPage] = useState<AppPage>("tracker");
+  const [notices, setNotices] = useState<AppNotice[]>([]);
   const [selectedSetPiece, setSelectedSetPiece] = useState(SET_PIECES[0].code);
   const [setPieceTeam, setSetPieceTeam] = useState<TeamSide>("home");
   const [setPieceRating, setSetPieceRating] = useState(3);
@@ -751,6 +786,65 @@ function App() {
     () => deriveMatchTime(match.video, currentVideoSeconds),
     [currentVideoSeconds, match.video],
   );
+
+  const notify = useCallback((tone: NoticeTone, title: string, message: string) => {
+    const id = createEventId();
+    setNotices((current) => [{ id, tone, title, message }, ...current].slice(0, 5));
+  }, []);
+
+  const dismissNotice = (noticeId: string) => {
+    setNotices((current) => current.filter((notice) => notice.id !== noticeId));
+  };
+
+  const setupWarnings = useMemo(() => {
+    const warnings: AppNotice[] = [];
+    if (match.homeTeam.trim() && match.awayTeam.trim() && match.homeTeam.trim() === match.awayTeam.trim()) {
+      warnings.push({
+        id: "same-team-warning",
+        tone: "warning",
+        title: "Home and away match",
+        message: "Home and away teams have the same name. Confirm this is intentional before finishing the game.",
+      });
+    }
+    if (!match.gameDate) {
+      warnings.push({
+        id: "missing-date-warning",
+        tone: "warning",
+        title: "Missing game date",
+        message: "Add a game date so finished ratings are easy to find in the knowledge base.",
+      });
+    }
+    if (!match.homeDivision.trim() || !match.awayDivision.trim()) {
+      warnings.push({
+        id: "missing-division-warning",
+        tone: "warning",
+        title: "Missing division",
+        message: "Add both team divisions before finishing the game.",
+      });
+    }
+    if (
+      match.activePossession === "contested" &&
+      match.possessionSelection.contestedPlayerOneId &&
+      match.possessionSelection.contestedPlayerOneId === match.possessionSelection.contestedPlayerTwoId
+    ) {
+      warnings.push({
+        id: "duplicate-contested-player-warning",
+        tone: "error",
+        title: "Invalid contested possession",
+        message: "Select two different players for contested possession.",
+      });
+    }
+    return warnings;
+  }, [
+    match.activePossession,
+    match.awayDivision,
+    match.awayTeam,
+    match.gameDate,
+    match.homeDivision,
+    match.homeTeam,
+    match.possessionSelection.contestedPlayerOneId,
+    match.possessionSelection.contestedPlayerTwoId,
+  ]);
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(match));
@@ -992,6 +1086,13 @@ function App() {
   const addStatEvent = (player: PlayerSlot, statCode: string) => {
     const stat = match.statDefinitions.find((definition) => definition.code === statCode);
     if (!stat) {
+      notify("error", "Unknown stat", `Could not find a stat definition for ${statCode}.`);
+      return;
+    }
+
+    const validationMessage = validateStatInput(stat.valueType, match.nextStatValue);
+    if (validationMessage) {
+      notify("error", "Invalid stat value", validationMessage);
       return;
     }
 
@@ -1011,6 +1112,7 @@ function App() {
   const addSetPieceEvent = () => {
     const setPiece = SET_PIECES.find((piece) => piece.code === selectedSetPiece);
     if (!setPiece) {
+      notify("error", "Unknown set piece", "Choose a valid set-piece type before adding the event.");
       return;
     }
 
@@ -1034,6 +1136,7 @@ function App() {
   const addPlayEvent = () => {
     const play = match.plays.find((candidate) => candidate.id === selectedPlayId);
     if (!play) {
+      notify("error", "No play selected", "Choose an active play before tagging it.");
       return;
     }
 
@@ -1050,7 +1153,9 @@ function App() {
   const selectPossession = (owner: PossessionOwner) => {
     const participants = resolvePossessionParticipants(owner, match.possessionSelection, match.players);
     if (!participants) {
-      window.alert(
+      notify(
+        "error",
+        "Missing possession player",
         owner === "contested"
           ? "Select two different players contesting possession before tracking contested possession."
           : "Select the player in possession before tracking possession.",
@@ -1118,9 +1223,15 @@ function App() {
   };
 
   const loadVideo = () => {
-    updateVideo({ videoId: parseYouTubeVideoId(match.video.videoUrl) });
+    const videoId = parseYouTubeVideoId(match.video.videoUrl);
+    if (!videoId) {
+      notify("error", "Invalid video", "Paste a YouTube URL or video ID before loading the video.");
+      return;
+    }
+    updateVideo({ videoId });
     setCurrentVideoSeconds(0);
     previousPossessionVideoSeconds.current = 0;
+    notify("success", "Video loaded", "Video sync is ready. Confirm the half and boundary anchors before rating.");
   };
 
   const selectVideoStartHalf = (half: VideoSyncState["videoStartHalf"]) => {
@@ -1253,7 +1364,11 @@ function App() {
 
   const finishGame = () => {
     if (!match.events.length) {
-      window.alert("Record at least one event before finishing a game.");
+      notify("error", "No rating data", "Record at least one event before finishing a game.");
+      return;
+    }
+    if (!match.gameDate || !match.homeDivision.trim() || !match.awayDivision.trim()) {
+      notify("error", "Missing game metadata", "Add a game date and both team divisions before finishing.");
       return;
     }
 
@@ -1272,6 +1387,7 @@ function App() {
       };
     });
     setPage("knowledge");
+    notify("success", "Knowledge base updated", "Finished game stats were added to player and team history.");
   };
 
   const teamName = (team: TeamSide) => (team === "home" ? match.homeTeam : match.awayTeam);
@@ -1326,6 +1442,8 @@ function App() {
           Knowledge base
         </button>
       </nav>
+
+      <NoticeCenter notices={[...notices, ...setupWarnings]} onDismiss={dismissNotice} />
 
       {page === "settings" ? (
         <StatsSettingsPage
@@ -1860,6 +1978,35 @@ function AnchorRow({ label, seconds }: AnchorRowProps) {
       <span>{label}</span>
       <strong>{seconds === undefined ? "Not marked" : formatClock(seconds)}</strong>
     </div>
+  );
+}
+
+type NoticeCenterProps = {
+  notices: AppNotice[];
+  onDismiss: (noticeId: string) => void;
+};
+
+function NoticeCenter({ notices, onDismiss }: NoticeCenterProps) {
+  if (!notices.length) {
+    return null;
+  }
+
+  return (
+    <section className="notice-center" aria-label="Notifications">
+      {notices.map((notice) => (
+        <article className={`notice-card notice-${notice.tone}`} key={notice.id}>
+          <div>
+            <strong>{notice.title}</strong>
+            <p>{notice.message}</p>
+          </div>
+          {!notice.id.endsWith("-warning") ? (
+            <button type="button" onClick={() => onDismiss(notice.id)} aria-label={`Dismiss ${notice.title}`}>
+              Dismiss
+            </button>
+          ) : null}
+        </article>
+      ))}
+    </section>
   );
 }
 
