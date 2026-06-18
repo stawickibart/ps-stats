@@ -25,6 +25,11 @@ export type StatEvent = {
   id: string;
   kind: "stat" | "set-piece" | "note";
   team: TeamSide;
+  half?: "first" | "halftime" | "second" | "unknown";
+  matchSeconds?: number;
+  videoUrl?: string;
+  videoId?: string;
+  videoSeconds?: number;
   playerId?: string;
   playerName?: string;
   playerRole?: string;

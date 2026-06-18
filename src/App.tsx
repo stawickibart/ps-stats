@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ADVANCED_STATS,
   DEFAULT_PLAYERS,
@@ -12,6 +12,14 @@ import {
   createEventId,
   downloadCsv,
 } from "./stats";
+import { YouTubeVideoPlayer } from "./YouTubeVideoPlayer";
+import {
+  DEFAULT_VIDEO_SYNC,
+  VideoSyncState,
+  deriveMatchTime,
+  formatClock,
+  parseYouTubeVideoId,
+} from "./video";
 
 type MatchState = {
   homeTeam: string;
@@ -19,6 +27,7 @@ type MatchState = {
   activeBucket: string;
   minute: string;
   note: string;
+  video: VideoSyncState;
   players: PlayerSlot[];
   events: StatEvent[];
 };
@@ -31,6 +40,7 @@ const initialState: MatchState = {
   activeBucket: TIME_BUCKETS[0],
   minute: "0:00",
   note: "",
+  video: DEFAULT_VIDEO_SYNC,
   players: DEFAULT_PLAYERS,
   events: [],
 };
@@ -50,6 +60,10 @@ function readStoredState(): MatchState {
     return {
       ...initialState,
       ...parsed,
+      video: {
+        ...initialState.video,
+        ...(parsed.video ?? {}),
+      },
       players: parsed.players?.length ? parsed.players : initialState.players,
       events: parsed.events ?? [],
     };
@@ -63,10 +77,42 @@ function App() {
   const [selectedSetPiece, setSelectedSetPiece] = useState(SET_PIECES[0].code);
   const [setPieceTeam, setSetPieceTeam] = useState<TeamSide>("home");
   const [setPieceRating, setSetPieceRating] = useState(3);
+  const [currentVideoSeconds, setCurrentVideoSeconds] = useState(0);
+
+  const onVideoTimeChange = useCallback((seconds: number) => {
+    setCurrentVideoSeconds(seconds);
+  }, []);
+
+  const derivedVideoTime = useMemo(
+    () => deriveMatchTime(match.video, currentVideoSeconds),
+    [currentVideoSeconds, match.video],
+  );
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(match));
   }, [match]);
+
+  useEffect(() => {
+    if (!match.video.syncEnabled) {
+      return;
+    }
+
+    setMatch((current) => {
+      if (!current.video.syncEnabled) {
+        return current;
+      }
+
+      if (current.minute === derivedVideoTime.minute && current.activeBucket === derivedVideoTime.bucket) {
+        return current;
+      }
+
+      return {
+        ...current,
+        minute: derivedVideoTime.minute,
+        activeBucket: derivedVideoTime.bucket,
+      };
+    });
+  }, [derivedVideoTime.bucket, derivedVideoTime.minute, match.video.syncEnabled]);
 
   const score = useMemo(() => {
     return match.events.reduce(
@@ -121,6 +167,16 @@ function App() {
     setMatch((current) => ({ ...current, [key]: value }));
   };
 
+  const updateVideo = (patch: Partial<VideoSyncState>) => {
+    setMatch((current) => ({
+      ...current,
+      video: {
+        ...current.video,
+        ...patch,
+      },
+    }));
+  };
+
   const updatePlayer = (playerId: string, patch: Partial<PlayerSlot>) => {
     setMatch((current) => ({
       ...current,
@@ -138,8 +194,13 @@ function App() {
         {
           ...event,
           id: createEventId(),
-          bucket: current.activeBucket,
-          minute: current.minute,
+          half: derivedVideoTime.half,
+          matchSeconds: derivedVideoTime.matchSeconds,
+          videoUrl: current.video.videoUrl,
+          videoId: current.video.videoId,
+          videoSeconds: currentVideoSeconds,
+          bucket: current.video.syncEnabled ? derivedVideoTime.bucket : current.activeBucket,
+          minute: current.video.syncEnabled ? derivedVideoTime.minute : current.minute,
           note: current.note,
           recordedAt: new Date().toISOString(),
         },
@@ -188,6 +249,40 @@ function App() {
     });
   };
 
+  const loadVideo = () => {
+    updateVideo({ videoId: parseYouTubeVideoId(match.video.videoUrl) });
+    setCurrentVideoSeconds(0);
+  };
+
+  const selectVideoStartHalf = (half: VideoSyncState["videoStartHalf"]) => {
+    updateVideo({
+      videoStartHalf: half,
+      videoStartMatchClock: half === "second" ? "20:00" : "0:00",
+    });
+  };
+
+  const markFirstHalfStart = () => {
+    updateVideo({
+      firstHalfStartVideoSeconds: currentVideoSeconds,
+      firstHalfStartMatchClock: match.video.firstHalfStartMatchClock || "0:00",
+    });
+  };
+
+  const markFirstHalfEnd = () => {
+    updateVideo({
+      firstHalfEndVideoSeconds: currentVideoSeconds,
+      firstHalfEndMatchClock:
+        derivedVideoTime.half === "first" ? derivedVideoTime.minute : match.video.firstHalfEndMatchClock,
+    });
+  };
+
+  const markSecondHalfStart = () => {
+    updateVideo({
+      secondHalfStartVideoSeconds: currentVideoSeconds,
+      secondHalfStartMatchClock: match.video.secondHalfStartMatchClock || "20:00",
+    });
+  };
+
   const deleteEvent = (eventId: string) => {
     setMatch((current) => ({
       ...current,
@@ -203,14 +298,19 @@ function App() {
     setSelectedSetPiece(SET_PIECES[0].code);
     setSetPieceTeam("home");
     setSetPieceRating(3);
+    setCurrentVideoSeconds(0);
   };
 
   const exportEvents = () => {
     downloadCsv("power-soccer-events.csv", [
       [
         "Recorded At",
+        "Half",
         "Minute",
+        "Match Seconds",
         "Time Bucket",
+        "Video Seconds",
+        "Video URL",
         "Team",
         "Player",
         "Role",
@@ -225,8 +325,12 @@ function App() {
         .reverse()
         .map((event) => [
           event.recordedAt,
+          event.half,
           event.minute,
+          event.matchSeconds,
           event.bucket,
+          event.videoSeconds,
+          event.videoUrl,
           teamName(event.team),
           event.playerName,
           event.playerRole,
@@ -290,6 +394,123 @@ function App() {
         </div>
       </header>
 
+      <section className="panel video-sync-panel" aria-labelledby="video-title">
+        <div className="section-heading-row">
+          <div>
+            <p className="section-kicker">Video sync</p>
+            <h2 id="video-title">Link video time to match time</h2>
+            <p className="muted">
+              Load a YouTube match video, mark the half boundaries as playback reaches them, and
+              every stat entry will keep both the video timestamp and derived match clock.
+            </p>
+          </div>
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={match.video.syncEnabled}
+              onChange={(event) => updateVideo({ syncEnabled: event.target.checked })}
+            />
+            Use video clock for entries
+          </label>
+        </div>
+
+        <div className="video-sync-grid">
+          <div className="video-column">
+            <label>
+              YouTube URL or video ID
+              <div className="inline-control">
+                <input
+                  value={match.video.videoUrl}
+                  onChange={(event) => updateVideo({ videoUrl: event.target.value })}
+                  placeholder="youtube.com/watch?v=..."
+                />
+                <button type="button" className="primary-action" onClick={loadVideo}>
+                  Load video
+                </button>
+              </div>
+            </label>
+            <YouTubeVideoPlayer
+              videoId={match.video.videoId}
+              currentVideoSeconds={currentVideoSeconds}
+              onTimeChange={onVideoTimeChange}
+            />
+          </div>
+
+          <div className="sync-column">
+            <div className="current-time-card">
+              <span>Derived match time</span>
+              <strong>{derivedVideoTime.minute}</strong>
+              <p>{derivedVideoTime.status}</p>
+            </div>
+
+            <div className="sync-grid">
+              <label>
+                Video starts in
+                <select
+                  value={match.video.videoStartHalf}
+                  onChange={(event) =>
+                    selectVideoStartHalf(event.target.value as VideoSyncState["videoStartHalf"])
+                  }
+                >
+                  <option value="first">1st half</option>
+                  <option value="second">2nd half</option>
+                </select>
+              </label>
+              <label>
+                Match clock at video start
+                <input
+                  value={match.video.videoStartMatchClock}
+                  onChange={(event) => updateVideo({ videoStartMatchClock: event.target.value })}
+                  placeholder="0:00"
+                />
+              </label>
+              <label>
+                1st-half start clock
+                <input
+                  value={match.video.firstHalfStartMatchClock}
+                  onChange={(event) => updateVideo({ firstHalfStartMatchClock: event.target.value })}
+                  placeholder="0:00"
+                />
+              </label>
+              <label>
+                1st-half end clock
+                <input
+                  value={match.video.firstHalfEndMatchClock}
+                  onChange={(event) => updateVideo({ firstHalfEndMatchClock: event.target.value })}
+                  placeholder="20:00"
+                />
+              </label>
+              <label>
+                2nd-half start clock
+                <input
+                  value={match.video.secondHalfStartMatchClock}
+                  onChange={(event) => updateVideo({ secondHalfStartMatchClock: event.target.value })}
+                  placeholder="20:00"
+                />
+              </label>
+            </div>
+
+            <div className="boundary-actions">
+              <button type="button" onClick={markFirstHalfStart}>
+                Mark 1H start at {formatClock(currentVideoSeconds)}
+              </button>
+              <button type="button" onClick={markFirstHalfEnd}>
+                Mark 1H end at {formatClock(currentVideoSeconds)}
+              </button>
+              <button type="button" onClick={markSecondHalfStart}>
+                Mark 2H start at {formatClock(currentVideoSeconds)}
+              </button>
+            </div>
+
+            <div className="anchor-list">
+              <AnchorRow label="1H start" seconds={match.video.firstHalfStartVideoSeconds} />
+              <AnchorRow label="1H end" seconds={match.video.firstHalfEndVideoSeconds} />
+              <AnchorRow label="2H start" seconds={match.video.secondHalfStartVideoSeconds} />
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="panel setup-panel" aria-labelledby="setup-title">
         <div>
           <p className="section-kicker">Match setup</p>
@@ -311,11 +532,12 @@ function App() {
             />
           </label>
           <label>
-            Clock
+            Match clock
             <input
               value={match.minute}
               onChange={(event) => updateMatch("minute", event.target.value)}
               placeholder="12:34"
+              disabled={match.video.syncEnabled}
             />
           </label>
           <label>
@@ -323,6 +545,7 @@ function App() {
             <select
               value={match.activeBucket}
               onChange={(event) => updateMatch("activeBucket", event.target.value)}
+              disabled={match.video.syncEnabled}
             >
               {TIME_BUCKETS.map((bucket) => (
                 <option value={bucket} key={bucket}>
@@ -339,6 +562,7 @@ function App() {
               type="button"
               key={bucket}
               onClick={() => updateMatch("activeBucket", bucket)}
+              disabled={match.video.syncEnabled}
             >
               {bucket}
             </button>
@@ -530,6 +754,8 @@ function App() {
                     </strong>
                     <p>
                       {event.bucket} / {event.minute}
+                      {event.half ? ` / ${event.half}` : ""}
+                      {event.videoSeconds !== undefined ? ` / video ${formatClock(event.videoSeconds)}` : ""}
                       {event.setPieceRating ? ` / outcome ${event.setPieceRating}` : ""}
                       {event.note ? ` - ${event.note}` : ""}
                     </p>
@@ -578,6 +804,20 @@ type PlayerTeamPanelProps = {
   onPlayerChange: (playerId: string, patch: Partial<PlayerSlot>) => void;
   onStat: (player: PlayerSlot, statCode: string) => void;
 };
+
+type AnchorRowProps = {
+  label: string;
+  seconds?: number;
+};
+
+function AnchorRow({ label, seconds }: AnchorRowProps) {
+  return (
+    <div className="anchor-row">
+      <span>{label}</span>
+      <strong>{seconds === undefined ? "Not marked" : formatClock(seconds)}</strong>
+    </div>
+  );
+}
 
 function PlayerTeamPanel({ title, players, onPlayerChange, onStat }: PlayerTeamPanelProps) {
   return (
