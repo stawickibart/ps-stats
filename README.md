@@ -16,6 +16,7 @@ A browser-based rater console for collecting power soccer match statistics while
 - Editable stat definitions with abbreviation, display name, definition, value type, color group, and active status.
 - Editable play library with offensive/defensive type, play name, play art link, and source link.
 - Unified event log with distinct visual treatments for stats, plays, set pieces, and notes.
+- Knowledge base for finished games, teams, players, divisions, prior stats, and heuristic quality scores.
 
 ## Run locally
 
@@ -44,7 +45,19 @@ npm run build
 10. Tap the stat button on the relevant player card.
 11. Use the play tagging panel to record which offensive or defensive play a team is running.
 12. Use the set-piece panel for KOr, KOb, SIr, SIp, FKI, FKD, Clp, Cls, and Cy events.
-13. Export the event log or summary CSV for review or spreadsheet import. Event exports include half, match seconds, video seconds, video URL, stat values, and play art links.
+13. Click **Finish game & update knowledge base** to snapshot the game into player/team history.
+14. Export the event log or summary CSV for review or spreadsheet import. Event exports include half, match seconds, video seconds, video URL, stat values, and play art links.
+
+## Knowledge base
+
+The **Knowledge base** view stores finished games locally and rolls them up into player and team records. Game metadata includes:
+
+- game date
+- home and away teams
+- home and away divisions, defaulting to `104`
+- score, event count, stat totals, and tagged possession
+
+Team and player detail views show all saved stats plus heuristic quality scores for attack, defense, possession, discipline, and overall performance. These scores are derived only from available tagged data, so they should be treated as directional review aids rather than official ratings.
 
 ## Editing stats and plays
 

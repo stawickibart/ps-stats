@@ -32,6 +32,9 @@ import {
 type MatchState = {
   homeTeam: string;
   awayTeam: string;
+  gameDate: string;
+  homeDivision: string;
+  awayDivision: string;
   activeBucket: string;
   minute: string;
   note: string;
@@ -41,16 +44,97 @@ type MatchState = {
   plays: PlayDefinition[];
   activePossession: PossessionOwner;
   possessionSegments: PossessionSegment[];
+  knowledgeBase: KnowledgeBase;
   players: PlayerSlot[];
   events: StatEvent[];
 };
 
 const STORAGE_KEY = "power-soccer-stat-rater-v1";
-type AppPage = "tracker" | "settings";
+type AppPage = "tracker" | "settings" | "knowledge";
+type StatTotals = Record<string, number>;
+
+type RatingScores = {
+  attack: number;
+  defense: number;
+  possession: number;
+  discipline: number;
+  overall: number;
+};
+
+type TeamKnowledge = {
+  id: string;
+  name: string;
+  division: string;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  possessionSeconds: number;
+  contestedSeconds: number;
+  stats: StatTotals;
+  ratings: RatingScores;
+  gameIds: string[];
+  updatedAt: string;
+};
+
+type PlayerKnowledge = {
+  id: string;
+  name: string;
+  teamNames: string[];
+  divisions: string[];
+  gamesPlayed: number;
+  stats: StatTotals;
+  ratings: RatingScores;
+  gameIds: string[];
+  updatedAt: string;
+};
+
+type GameSnapshot = {
+  id: string;
+  date: string;
+  videoUrl: string;
+  finishedAt: string;
+  homeTeam: string;
+  awayTeam: string;
+  homeDivision: string;
+  awayDivision: string;
+  homeScore: number;
+  awayScore: number;
+  teamStats: Record<TeamSide, StatTotals>;
+  playerStats: Array<{
+    playerId: string;
+    playerName: string;
+    team: TeamSide;
+    teamName: string;
+    division: string;
+    role?: string;
+    stats: StatTotals;
+    ratings: RatingScores;
+  }>;
+  possession: Record<PossessionOwner, number>;
+  eventCount: number;
+};
+
+type KnowledgeBase = {
+  players: PlayerKnowledge[];
+  teams: TeamKnowledge[];
+  games: GameSnapshot[];
+};
+
+const emptyKnowledgeBase: KnowledgeBase = {
+  players: [],
+  teams: [],
+  games: [],
+};
 
 const initialState: MatchState = {
   homeTeam: "Rock",
   awayTeam: "Opponent",
+  gameDate: new Date().toISOString().slice(0, 10),
+  homeDivision: "104",
+  awayDivision: "104",
   activeBucket: TIME_BUCKETS[0],
   minute: "0:00",
   note: "",
@@ -60,6 +144,7 @@ const initialState: MatchState = {
   plays: DEFAULT_PLAYS,
   activePossession: "contested",
   possessionSegments: [],
+  knowledgeBase: emptyKnowledgeBase,
   players: DEFAULT_PLAYERS,
   events: [],
 };
@@ -106,6 +191,267 @@ function normalizePossessionSegments(segments?: PossessionSegment[]) {
       id: segment.id || `possession-${index}`,
       owner: segment.owner ?? "contested",
     }));
+}
+
+function normalizeId(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "unknown";
+}
+
+function normalizeKnowledgeBase(knowledgeBase?: KnowledgeBase) {
+  return {
+    players: knowledgeBase?.players ?? [],
+    teams: knowledgeBase?.teams ?? [],
+    games: knowledgeBase?.games ?? [],
+  };
+}
+
+function emptyRatings(): RatingScores {
+  return {
+    attack: 0,
+    defense: 0,
+    possession: 0,
+    discipline: 0,
+    overall: 0,
+  };
+}
+
+function statValue(event: StatEvent) {
+  const numeric = Number(event.statValue);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+}
+
+function addToTotals(totals: StatTotals, code: string, value: number) {
+  totals[code] = (totals[code] ?? 0) + value;
+}
+
+function totalPossession(segments: PossessionSegment[]) {
+  return segments.reduce<Record<PossessionOwner, number>>(
+    (totals, segment) => {
+      totals[segment.owner] += segment.endSeconds - segment.startSeconds;
+      return totals;
+    },
+    { home: 0, away: 0, contested: 0 },
+  );
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function calculateRatings(stats: StatTotals, context?: { goalsAgainst?: number; possessionShare?: number }) {
+  const goals = stats.G ?? 0;
+  const assists = stats.A ?? 0;
+  const shots = stats.Sh ?? 0;
+  const opportunities = stats.Op ?? 0;
+  const saves = stats.Sv ?? 0;
+  const stops = stats.St ?? 0;
+  const wonPossession = stats.Wp ?? 0;
+  const positiveTransitions = stats["+"] ?? 0;
+  const negativeTransitions = stats["-"] ?? 0;
+  const lostPossession = stats.Lp ?? 0;
+  const wastedOpportunities = stats.Wo ?? 0;
+  const errors = stats.Er ?? 0;
+  const fouls = stats.Fl ?? 0;
+  const twoOnOnes = stats["2o1"] ?? stats["2on1"] ?? 0;
+  const goalsAgainst = context?.goalsAgainst ?? 0;
+  const possessionShare = context?.possessionShare ?? 0;
+
+  const attack = clampScore(45 + goals * 10 + assists * 4 + shots * 2 + opportunities * 3 + positiveTransitions - wastedOpportunities * 3);
+  const defense = clampScore(45 + saves * 5 + stops * 4 + wonPossession * 2 - errors * 6 - goalsAgainst * 8);
+  const possession = clampScore(45 + possessionShare * 25 + wonPossession * 3 + positiveTransitions * 2 - lostPossession * 3 - negativeTransitions * 3);
+  const discipline = clampScore(80 - fouls * 5 - twoOnOnes * 3);
+
+  return {
+    attack,
+    defense,
+    possession,
+    discipline,
+    overall: clampScore(attack * 0.32 + defense * 0.3 + possession * 0.28 + discipline * 0.1),
+  };
+}
+
+function buildGameSnapshot(match: MatchState) {
+  const id = createEventId();
+  const teamStats: Record<TeamSide, StatTotals> = { home: {}, away: {} };
+  const playerStats = new Map<
+    string,
+    {
+      playerId: string;
+      playerName: string;
+      team: TeamSide;
+      teamName: string;
+      division: string;
+      role?: string;
+      stats: StatTotals;
+    }
+  >();
+
+  for (const event of match.events) {
+    if (event.kind !== "stat" || !event.statCode) {
+      continue;
+    }
+
+    const value = statValue(event);
+    addToTotals(teamStats[event.team], event.statCode, value);
+
+    if (event.playerName) {
+      const playerId = normalizeId(event.playerName);
+      const existing =
+        playerStats.get(playerId) ??
+        {
+          playerId,
+          playerName: event.playerName,
+          team: event.team,
+          teamName: event.team === "home" ? match.homeTeam : match.awayTeam,
+          division: event.team === "home" ? match.homeDivision : match.awayDivision,
+          role: event.playerRole,
+          stats: {},
+        };
+      addToTotals(existing.stats, event.statCode, value);
+      playerStats.set(playerId, existing);
+    }
+  }
+
+  const possession = totalPossession(match.possessionSegments);
+  const homeScore = teamStats.home.G ?? 0;
+  const awayScore = teamStats.away.G ?? 0;
+  const playerRows = Array.from(playerStats.values()).map((player) => ({
+    ...player,
+    ratings: calculateRatings(player.stats),
+  }));
+
+  return {
+    id,
+    date: match.gameDate,
+    videoUrl: match.video.videoUrl,
+    finishedAt: new Date().toISOString(),
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    homeDivision: match.homeDivision,
+    awayDivision: match.awayDivision,
+    homeScore,
+    awayScore,
+    teamStats,
+    playerStats: playerRows,
+    possession,
+    eventCount: match.events.length,
+  };
+}
+
+function mergeStats(base: StatTotals, addition: StatTotals) {
+  const merged = { ...base };
+  for (const [code, value] of Object.entries(addition)) {
+    merged[code] = (merged[code] ?? 0) + value;
+  }
+  return merged;
+}
+
+function mergeKnowledgeBase(knowledgeBase: KnowledgeBase, game: GameSnapshot) {
+  const games = [game, ...knowledgeBase.games.filter((existing) => existing.id !== game.id)];
+
+  const teamsById = new Map(knowledgeBase.teams.map((team) => [team.id, { ...team, stats: { ...team.stats }, gameIds: [...team.gameIds] }]));
+  (["home", "away"] as TeamSide[]).forEach((side) => {
+    const opponent = side === "home" ? "away" : "home";
+    const name = side === "home" ? game.homeTeam : game.awayTeam;
+    const division = side === "home" ? game.homeDivision : game.awayDivision;
+    const goalsFor = side === "home" ? game.homeScore : game.awayScore;
+    const goalsAgainst = side === "home" ? game.awayScore : game.homeScore;
+    const id = `${normalizeId(name)}-${normalizeId(division)}`;
+    const previous =
+      teamsById.get(id) ??
+      {
+        id,
+        name,
+        division,
+        gamesPlayed: 0,
+        wins: 0,
+        losses: 0,
+        ties: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        possessionSeconds: 0,
+        contestedSeconds: 0,
+        stats: {},
+        ratings: emptyRatings(),
+        gameIds: [],
+        updatedAt: game.finishedAt,
+      };
+    const gamesPlayed = previous.gamesPlayed + 1;
+    const possessionSeconds = previous.possessionSeconds + game.possession[side];
+    const contestedSeconds = previous.contestedSeconds + game.possession.contested;
+    const possessionTotal = possessionSeconds + contestedSeconds + game.possession[opponent];
+    const stats = mergeStats(previous.stats, game.teamStats[side]);
+    const wins = previous.wins + (goalsFor > goalsAgainst ? 1 : 0);
+    const losses = previous.losses + (goalsFor < goalsAgainst ? 1 : 0);
+    const ties = previous.ties + (goalsFor === goalsAgainst ? 1 : 0);
+
+    teamsById.set(id, {
+      ...previous,
+      name,
+      division,
+      gamesPlayed,
+      wins,
+      losses,
+      ties,
+      goalsFor: previous.goalsFor + goalsFor,
+      goalsAgainst: previous.goalsAgainst + goalsAgainst,
+      possessionSeconds,
+      contestedSeconds,
+      stats,
+      ratings: calculateRatings(stats, {
+        goalsAgainst: previous.goalsAgainst + goalsAgainst,
+        possessionShare: possessionTotal > 0 ? possessionSeconds / possessionTotal : 0,
+      }),
+      gameIds: Array.from(new Set([game.id, ...previous.gameIds])),
+      updatedAt: game.finishedAt,
+    });
+  });
+
+  const playersById = new Map(
+    knowledgeBase.players.map((player) => [
+      player.id,
+      {
+        ...player,
+        stats: { ...player.stats },
+        gameIds: [...player.gameIds],
+        teamNames: [...player.teamNames],
+        divisions: [...player.divisions],
+      },
+    ]),
+  );
+  for (const player of game.playerStats) {
+    const previous =
+      playersById.get(player.playerId) ??
+      {
+        id: player.playerId,
+        name: player.playerName,
+        teamNames: [],
+        divisions: [],
+        gamesPlayed: 0,
+        stats: {},
+        ratings: emptyRatings(),
+        gameIds: [],
+        updatedAt: game.finishedAt,
+      };
+    const stats = mergeStats(previous.stats, player.stats);
+    playersById.set(player.playerId, {
+      ...previous,
+      name: player.playerName,
+      teamNames: Array.from(new Set([player.teamName, ...previous.teamNames])),
+      divisions: Array.from(new Set([player.division, ...previous.divisions])),
+      gamesPlayed: previous.gamesPlayed + 1,
+      stats,
+      ratings: calculateRatings(stats),
+      gameIds: Array.from(new Set([game.id, ...previous.gameIds])),
+      updatedAt: game.finishedAt,
+    });
+  }
+
+  return {
+    games,
+    teams: Array.from(teamsById.values()).sort((a, b) => b.ratings.overall - a.ratings.overall),
+    players: Array.from(playersById.values()).sort((a, b) => b.ratings.overall - a.ratings.overall),
+  };
 }
 
 function trimPossessionSegmentsAfter(segments: PossessionSegment[], seconds: number) {
@@ -193,11 +539,15 @@ function readStoredState(): MatchState {
         ...initialState.video,
         ...(parsed.video ?? {}),
       },
+      gameDate: parsed.gameDate ?? initialState.gameDate,
+      homeDivision: parsed.homeDivision ?? initialState.homeDivision,
+      awayDivision: parsed.awayDivision ?? initialState.awayDivision,
       nextStatValue: parsed.nextStatValue ?? "",
       statDefinitions: normalizeStats(parsed.statDefinitions),
       plays: normalizePlays(parsed.plays),
       activePossession: parsed.activePossession ?? "contested",
       possessionSegments: normalizePossessionSegments(parsed.possessionSegments),
+      knowledgeBase: normalizeKnowledgeBase(parsed.knowledgeBase),
       players: parsed.players?.length ? parsed.players : initialState.players,
       events: parsed.events ?? [],
     };
@@ -587,7 +937,11 @@ function App() {
     if (!window.confirm("Clear all entered events and restore the default match setup?")) {
       return;
     }
-    setMatch(initialState);
+    setMatch((current) => ({
+      ...initialState,
+      knowledgeBase: current.knowledgeBase,
+      gameDate: new Date().toISOString().slice(0, 10),
+    }));
     setSelectedSetPiece(SET_PIECES[0].code);
     setSetPieceTeam("home");
     setSetPieceRating(3);
@@ -671,6 +1025,29 @@ function App() {
     downloadCsv("power-soccer-summary.csv", [header, ...rows]);
   };
 
+  const finishGame = () => {
+    if (!match.events.length) {
+      window.alert("Record at least one event before finishing a game.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Finish this game and update the player/team knowledge base with the current stats?",
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setMatch((current) => {
+      const game = buildGameSnapshot(current);
+      return {
+        ...current,
+        knowledgeBase: mergeKnowledgeBase(current.knowledgeBase, game),
+      };
+    });
+    setPage("knowledge");
+  };
+
   const teamName = (team: TeamSide) => (team === "home" ? match.homeTeam : match.awayTeam);
   const homePlayers = match.players.filter((player) => player.team === "home");
   const awayPlayers = match.players.filter((player) => player.team === "away");
@@ -715,6 +1092,13 @@ function App() {
         >
           Stats & plays settings
         </button>
+        <button
+          type="button"
+          className={page === "knowledge" ? "tab-button active" : "tab-button"}
+          onClick={() => setPage("knowledge")}
+        >
+          Knowledge base
+        </button>
       </nav>
 
       {page === "settings" ? (
@@ -728,6 +1112,8 @@ function App() {
           onPlayAdd={addPlayDefinition}
           onPlayRemove={removePlayDefinition}
         />
+      ) : page === "knowledge" ? (
+        <KnowledgeBasePage knowledgeBase={match.knowledgeBase} statDefinitions={match.statDefinitions} />
       ) : (
         <>
       <section className="panel video-sync-panel" aria-labelledby="video-title">
@@ -864,6 +1250,14 @@ function App() {
         </div>
         <div className="setup-grid">
           <label>
+            Game date
+            <input
+              type="date"
+              value={match.gameDate}
+              onChange={(event) => updateMatch("gameDate", event.target.value)}
+            />
+          </label>
+          <label>
             Home
             <input
               value={match.homeTeam}
@@ -871,10 +1265,26 @@ function App() {
             />
           </label>
           <label>
+            Home division
+            <input
+              value={match.homeDivision}
+              onChange={(event) => updateMatch("homeDivision", event.target.value)}
+              placeholder="104"
+            />
+          </label>
+          <label>
             Away
             <input
               value={match.awayTeam}
               onChange={(event) => updateMatch("awayTeam", event.target.value)}
+            />
+          </label>
+          <label>
+            Away division
+            <input
+              value={match.awayDivision}
+              onChange={(event) => updateMatch("awayDivision", event.target.value)}
+              placeholder="104"
             />
           </label>
           <label>
@@ -1088,6 +1498,9 @@ function App() {
               <h2 id="summary-title">Team stat totals</h2>
             </div>
             <div className="action-row">
+              <button type="button" className="primary-action" onClick={finishGame}>
+                Finish game & update knowledge base
+              </button>
               <button type="button" onClick={exportSummary}>
                 Export summary CSV
               </button>
@@ -1418,6 +1831,222 @@ type StatsSettingsPageProps = {
   onPlayAdd: (type: PlayType) => void;
   onPlayRemove: (playId: string) => void;
 };
+
+type KnowledgeBasePageProps = {
+  knowledgeBase: KnowledgeBase;
+  statDefinitions: StatDefinition[];
+};
+
+function statLabel(code: string, statDefinitions: StatDefinition[]) {
+  return statDefinitions.find((stat) => stat.code === code || stat.templateCode === code)?.label ?? code;
+}
+
+function RatingCards({ ratings }: { ratings: RatingScores }) {
+  return (
+    <div className="rating-grid">
+      {(["overall", "attack", "defense", "possession", "discipline"] as Array<keyof RatingScores>).map((key) => (
+        <div className="rating-card" key={key}>
+          <span>{key}</span>
+          <strong>{ratings[key]}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatsBreakdown({ stats, statDefinitions }: { stats: StatTotals; statDefinitions: StatDefinition[] }) {
+  const rows = Object.entries(stats).sort((a, b) => a[0].localeCompare(b[0]));
+  if (!rows.length) {
+    return <p className="empty-state">No stat events have been saved yet.</p>;
+  }
+
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Stat</th>
+            <th>Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([code, value]) => (
+            <tr key={code}>
+              <th>{statLabel(code, statDefinitions)}</th>
+              <td>{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function KnowledgeBasePage({ knowledgeBase, statDefinitions }: KnowledgeBasePageProps) {
+  const [viewType, setViewType] = useState<"teams" | "players">("teams");
+  const selectedList = viewType === "teams" ? knowledgeBase.teams : knowledgeBase.players;
+  const [selectedId, setSelectedId] = useState("");
+  const selectedRecord = selectedList.find((record) => record.id === selectedId) ?? selectedList[0];
+  const relatedGames = selectedRecord
+    ? knowledgeBase.games.filter((game) => selectedRecord.gameIds.includes(game.id))
+    : [];
+
+  useEffect(() => {
+    if (selectedList.length && !selectedList.some((record) => record.id === selectedId)) {
+      setSelectedId(selectedList[0].id);
+    }
+  }, [selectedId, selectedList]);
+
+  return (
+    <section className="knowledge-page">
+      <section className="panel">
+        <div className="section-heading-row">
+          <div>
+            <p className="section-kicker">Knowledge base</p>
+            <h2>Players, teams, and prior games</h2>
+            <p className="muted">
+              Finish a rating session from the tracker to snapshot the game into this local history.
+              Team and player quality scores are heuristic summaries from available goals, stat
+              counts, negative events, discipline, and possession.
+            </p>
+          </div>
+          <div className="action-row">
+            <button
+              type="button"
+              className={viewType === "teams" ? "chip active" : "chip"}
+              onClick={() => setViewType("teams")}
+            >
+              Teams
+            </button>
+            <button
+              type="button"
+              className={viewType === "players" ? "chip active" : "chip"}
+              onClick={() => setViewType("players")}
+            >
+              Players
+            </button>
+          </div>
+        </div>
+        <div className="knowledge-summary-grid">
+          <div className="mini-card">
+            <strong>{knowledgeBase.games.length}</strong>
+            <span>Finished games</span>
+          </div>
+          <div className="mini-card">
+            <strong>{knowledgeBase.teams.length}</strong>
+            <span>Teams</span>
+          </div>
+          <div className="mini-card">
+            <strong>{knowledgeBase.players.length}</strong>
+            <span>Players</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="knowledge-layout">
+        <section className="panel">
+          <p className="section-kicker">{viewType}</p>
+          <h2>Saved {viewType}</h2>
+          {selectedList.length === 0 ? (
+            <p className="empty-state">No {viewType} yet. Finish a game to populate this view.</p>
+          ) : (
+            <div className="knowledge-list">
+              {selectedList.map((record) => (
+                <button
+                  type="button"
+                  className={record.id === selectedRecord?.id ? "knowledge-row active" : "knowledge-row"}
+                  key={record.id}
+                  onClick={() => setSelectedId(record.id)}
+                >
+                  <strong>{record.name}</strong>
+                  <span>
+                    {record.gamesPlayed} games / overall {record.ratings.overall}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="panel">
+          {selectedRecord ? (
+            <>
+              <p className="section-kicker">Detail view</p>
+              <h2>{selectedRecord.name}</h2>
+              {"division" in selectedRecord ? (
+                <p className="muted">
+                  Division {selectedRecord.division} / {selectedRecord.gamesPlayed} games /{" "}
+                  {selectedRecord.wins}-{selectedRecord.losses}-{selectedRecord.ties}
+                </p>
+              ) : (
+                <p className="muted">
+                  {selectedRecord.teamNames.join(", ") || "No team"} / Division{" "}
+                  {selectedRecord.divisions.join(", ") || "unknown"} / {selectedRecord.gamesPlayed} games
+                </p>
+              )}
+              <RatingCards ratings={selectedRecord.ratings} />
+              {"goalsFor" in selectedRecord ? (
+                <div className="knowledge-summary-grid">
+                  <div className="mini-card">
+                    <strong>{selectedRecord.goalsFor}</strong>
+                    <span>Goals for</span>
+                  </div>
+                  <div className="mini-card">
+                    <strong>{selectedRecord.goalsAgainst}</strong>
+                    <span>Goals against</span>
+                  </div>
+                  <div className="mini-card">
+                    <strong>{formatClock(selectedRecord.possessionSeconds)}</strong>
+                    <span>Tagged possession</span>
+                  </div>
+                </div>
+              ) : null}
+              <h3>All saved stats</h3>
+              <StatsBreakdown stats={selectedRecord.stats} statDefinitions={statDefinitions} />
+              <h3>Games</h3>
+              {relatedGames.length ? (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Game</th>
+                        <th>Division</th>
+                        <th>Score</th>
+                        <th>Events</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {relatedGames.map((game) => (
+                        <tr key={game.id}>
+                          <td>{game.date}</td>
+                          <td>
+                            {game.homeTeam} vs {game.awayTeam}
+                          </td>
+                          <td>
+                            {game.homeDivision} / {game.awayDivision}
+                          </td>
+                          <td>
+                            {game.homeScore}-{game.awayScore}
+                          </td>
+                          <td>{game.eventCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="empty-state">No related games found.</p>
+              )}
+            </>
+          ) : (
+            <p className="empty-state">Select a saved team or player.</p>
+          )}
+        </section>
+      </section>
+    </section>
+  );
+}
 
 function StatsSettingsPage({
   stats,
