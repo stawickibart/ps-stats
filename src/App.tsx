@@ -67,7 +67,17 @@ type AppNotice = {
   message: string;
 };
 
-type StructuredEventType = "" | "pass" | "dribble" | "shot" | "engagement" | "turnover" | "note";
+type StructuredEventType =
+  | ""
+  | "completed-pass"
+  | "failed-pass"
+  | "dribble"
+  | "shot"
+  | "engagement"
+  | "turnover"
+  | "set-piece"
+  | "substitution"
+  | "note";
 
 type StructuredEventForm = {
   type: StructuredEventType;
@@ -83,6 +93,9 @@ type StructuredEventForm = {
   fieldEndLane: string;
   eventSource: "open-play" | "set-piece";
   sourceSetPieceCode: string;
+  sourceSetPieceRating: number;
+  sourcePlayId: string;
+  advancedTags: string[];
   detail: string;
 };
 
@@ -200,6 +213,9 @@ function defaultStructuredEventForm(): StructuredEventForm {
     fieldEndLane: "middle",
     eventSource: "open-play",
     sourceSetPieceCode: SET_PIECES[0].code,
+    sourceSetPieceRating: 3,
+    sourcePlayId: "",
+    advancedTags: [],
     detail: "",
   };
 }
@@ -1729,29 +1745,30 @@ function App() {
       return;
     }
 
-    if (eventForm.type === "pass") {
-      if (["completed", "key-pass", "shot-assist", "assist"].includes(eventForm.outcome) && !secondary) {
+    if (eventForm.type === "completed-pass") {
+      if (!secondary) {
         notify("error", "Missing receiver", "Select the player who received the completed pass.");
         return;
       }
       addStat(primary, "Pas");
       if (eventForm.direction === "left") addStat(primary, "Lft");
       if (eventForm.direction === "right") addStat(primary, "Rgt");
+      addStat(primary, "Pc");
+      addStat(secondary, "Rec");
+      if (eventForm.outcome === "key-pass") addStat(primary, "KP");
+      if (eventForm.outcome === "shot-assist") addStat(primary, "ShA");
+      if (eventForm.outcome === "assist") addStat(primary, "A");
+    }
 
-      if (["completed", "key-pass", "shot-assist", "assist"].includes(eventForm.outcome)) {
-        addStat(primary, "Pc");
-        addStat(secondary, "Rec");
-      }
-      if (eventForm.outcome === "misplaced" || eventForm.outcome === "turnover") {
-        addStat(primary, "Mp");
-      }
+    if (eventForm.type === "failed-pass") {
+      addStat(primary, "Pas");
+      addStat(primary, "Mp");
+      if (eventForm.direction === "left") addStat(primary, "Lft");
+      if (eventForm.direction === "right") addStat(primary, "Rgt");
       if (eventForm.outcome === "turnover") {
         addStat(primary, "Lp");
         addStat(primary, "-");
       }
-      if (eventForm.outcome === "key-pass") addStat(primary, "KP");
-      if (eventForm.outcome === "shot-assist") addStat(primary, "ShA");
-      if (eventForm.outcome === "assist") addStat(primary, "A");
     }
 
     if (eventForm.type === "dribble") {
@@ -1817,6 +1834,68 @@ function App() {
       });
     }
 
+    if (eventForm.type === "set-piece") {
+      if (!primary) {
+        notify("error", "Missing set-piece taker", "Select the player who took the set piece.");
+        return;
+      }
+      const setPiece = SET_PIECES.find((piece) => piece.code === eventForm.sourceSetPieceCode);
+      events.push({
+        kind: "set-piece",
+        team: eventForm.team,
+        playerId: primary.id,
+        playerName: primary.name,
+        playerRole: primary.role,
+        setPieceCode: setPiece?.code,
+        setPieceLabel: setPiece?.label,
+        setPieceRating: eventForm.sourceSetPieceRating,
+      });
+      const play = match.plays.find((candidate) => candidate.id === eventForm.sourcePlayId);
+      if (play) {
+        events.push({
+          kind: "play",
+          team: eventForm.team,
+          playId: play.id,
+          playName: play.name,
+          playType: play.type,
+          playArtUrl: play.artUrl,
+        });
+      }
+      if (eventForm.outcome === "shot") addStat(primary, "ShA");
+      if (eventForm.outcome === "goal") addStat(primary, "A");
+      if (eventForm.outcome === "turnover") {
+        addStat(primary, "Lp");
+        addStat(primary, "-");
+      }
+    }
+
+    if (eventForm.type === "substitution") {
+      if (match.activePossession !== "out") {
+        notify("error", "Substitution unavailable", "Substitutions can only be recorded when the ball is out of play.");
+        return;
+      }
+      if (!primary || !secondary) {
+        notify("error", "Incomplete substitution", "Select the player leaving and the substitute entering.");
+        return;
+      }
+      events.push({
+        kind: "substitution",
+        team: eventForm.team,
+        substitutionOutPlayerId: primary.id,
+        substitutionOutPlayerName: primary.name,
+        substitutionInPlayerId: secondary.id,
+        substitutionInPlayerName: secondary.name,
+      });
+      setMatch((current) => ({
+        ...current,
+        players: current.players.map((player) => {
+          if (player.id === primary.id) return { ...player, active: false };
+          if (player.id === secondary.id) return { ...player, active: true };
+          return player;
+        }),
+      }));
+    }
+
     if (!events.length) {
       notify("error", "No event details", "Choose an event type and outcome that records at least one stat.");
       return;
@@ -1830,18 +1909,29 @@ function App() {
       eventSource: eventForm.eventSource,
       eventSourceSetPieceCode: eventForm.eventSource === "set-piece" ? eventForm.sourceSetPieceCode : undefined,
       eventSourceSetPieceLabel: eventForm.eventSource === "set-piece" ? sourceSetPiece?.label : undefined,
+      playId: eventForm.sourcePlayId || undefined,
+      playName: match.plays.find((play) => play.id === eventForm.sourcePlayId)?.name,
     };
+
+    const advancedNote = eventForm.advancedTags.length
+      ? `${eventForm.detail || match.note} [Advanced: ${eventForm.advancedTags.join(", ")}]`
+      : eventForm.detail || match.note;
 
     addStructuredEvents(
       events.map((event) => ({
         ...event,
         ...eventMetadata,
       })),
-      eventForm.detail || match.note,
+      advancedNote,
     );
     setEventForm((current) => ({
       ...defaultStructuredEventForm(),
       team: current.team,
+    }));
+    setMatch((current) => ({
+      ...current,
+      activePossession: "unset",
+      possessionSelection: defaultPossessionSelection(current.players),
     }));
     notify("success", "Event recorded", "The event details were converted into stat entries.");
   };
@@ -2422,7 +2512,7 @@ function App() {
                   </label>
                 </div>
                 <RosterSetupPanel
-                  players={activePlayers}
+                  players={match.players}
                   homeTeam={match.homeTeam}
                   awayTeam={match.awayTeam}
                   onPlayerChange={updatePlayer}
@@ -2460,23 +2550,11 @@ function App() {
                   form={eventForm}
                   homeTeam={match.homeTeam}
                   awayTeam={match.awayTeam}
-                  players={activePlayers}
+                  players={match.players}
+                  plays={match.plays}
                   eventRequiredAfterPause={eventRequiredAfterPause}
                   onChange={(patch) => setEventForm((current) => ({ ...current, ...patch }))}
                   onSubmit={submitStructuredEvent}
-                />
-                <SubstitutionPanel
-                  team={substitutionTeam}
-                  players={match.players}
-                  homeTeam={match.homeTeam}
-                  awayTeam={match.awayTeam}
-                  disabled={match.activePossession !== "out"}
-                  outPlayerId={subOutPlayerId}
-                  inPlayerId={subInPlayerId}
-                  onTeamChange={setSubstitutionTeam}
-                  onOutChange={setSubOutPlayerId}
-                  onInChange={setSubInPlayerId}
-                  onSubmit={addSubstitutionEvent}
                 />
               </>
             )}
@@ -2724,168 +2802,6 @@ function App() {
       </section>
       )}
 
-      <section className="columns secondary-columns">
-        {eventForm.eventSource === "set-piece" ? (
-        <section className="panel" aria-labelledby="set-piece-title">
-          <p className="section-kicker">Set pieces</p>
-          <h2 id="set-piece-title">Record set-piece result</h2>
-          <div className="set-piece-controls">
-            <label>
-              Team
-              <select
-                value={setPieceTeam}
-                onChange={(event) => setSetPieceTeam(event.target.value as TeamSide)}
-              >
-                <option value="home">{match.homeTeam}</option>
-                <option value="away">{match.awayTeam}</option>
-              </select>
-            </label>
-            <label>
-              Set
-              <select
-                value={selectedSetPiece}
-                onChange={(event) => setSelectedSetPiece(event.target.value)}
-              >
-                {SET_PIECES.map((piece) => (
-                  <option key={piece.code} value={piece.code}>
-                    {piece.code} - {piece.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Outcome
-              <select
-                value={setPieceRating}
-                onChange={(event) => setSetPieceRating(Number(event.target.value))}
-              >
-                {[1, 2, 3, 4, 5].map((rating) => (
-                  <option value={rating} key={rating}>
-                    {rating}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" className="primary-action" onClick={addSetPieceEvent}>
-              Add set piece
-            </button>
-          </div>
-          <div className="definition-list compact">
-            {SET_PIECES.map((piece) => (
-              <div key={piece.code}>
-                <strong>{piece.code}</strong>
-                <span>{piece.detail}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-        ) : null}
-
-        {eventForm.eventSource === "set-piece" && !showPlayTagging ? (
-          <section className="panel play-tag-panel">
-            <p className="section-kicker">Play tagging</p>
-            <h2>Did the team play change?</h2>
-            <p className="muted">Plays are tagged only for set-piece situations.</p>
-            <button type="button" className="primary-action" onClick={() => setShowPlayTagging(true)}>
-              Team play changed
-            </button>
-          </section>
-        ) : null}
-
-        {eventForm.eventSource === "set-piece" && showPlayTagging ? (
-        <section className="panel play-tag-panel" aria-labelledby="play-tag-title">
-          <p className="section-kicker">Play tagging</p>
-          <h2 id="play-tag-title">Tag team play</h2>
-          <p className="muted">
-            Select the play a team is running. Add or edit play names, types, and art links in
-            Stats & plays settings.
-          </p>
-          <div className="play-controls">
-            <label>
-              Team
-              <select value={playTeam} onChange={(event) => setPlayTeam(event.target.value as TeamSide)}>
-                <option value="home">{match.homeTeam}</option>
-                <option value="away">{match.awayTeam}</option>
-              </select>
-            </label>
-            <label>
-              Play type
-              <select value={playType} onChange={(event) => setPlayType(event.target.value as PlayType)}>
-                <option value="offense">Offense</option>
-                <option value="defense">Defense</option>
-              </select>
-            </label>
-            <label>
-              Play
-              <select
-                value={selectedPlayId}
-                onChange={(event) => setSelectedPlayId(event.target.value)}
-                disabled={!activePlays.length}
-              >
-                {activePlays.map((play) => (
-                  <option key={play.id} value={play.id}>
-                    {play.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" className="primary-action" onClick={addPlayEvent} disabled={!activePlays.length}>
-              Tag play
-            </button>
-          </div>
-          {activePlays.length ? (
-            <div className="play-card-grid">
-              {activePlays.map((play) => (
-                <button
-                  type="button"
-                  className={play.id === selectedPlayId ? "play-option active" : "play-option"}
-                  key={play.id}
-                  onClick={() => setSelectedPlayId(play.id)}
-                >
-                  <strong>{play.name}</strong>
-                  <span>{play.artUrl ? "Art linked" : "No art link"}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="empty-state">No active {playType} plays. Add one in settings.</p>
-          )}
-          <button type="button" onClick={() => setShowPlayTagging(false)}>
-            Hide play tagging
-          </button>
-        </section>
-        ) : null}
-
-        <section className="panel" aria-labelledby="advanced-title">
-          <p className="section-kicker">Extra tags</p>
-          <h2 id="advanced-title">Advanced observations</h2>
-          {!showAdvancedTags ? (
-            <>
-              <p className="muted">Use these lower-frequency tags when an event needs extra classification.</p>
-              <button type="button" onClick={() => setShowAdvancedTags(true)}>
-                Show advanced tags
-              </button>
-            </>
-          ) : (
-            <>
-          <p className="muted">
-            The definitions tab lists these additional metrics without abbreviations. Use them as
-            tagged notes when the rater needs to preserve context for later review.
-          </p>
-          <div className="tag-grid">
-            {ADVANCED_STATS.map((tag) => (
-              <button type="button" className="tag-button" key={tag} onClick={() => addTaggedNote(tag)}>
-                {tag}
-              </button>
-            ))}
-          </div>
-              <button type="button" onClick={() => setShowAdvancedTags(false)}>
-                Hide advanced tags
-              </button>
-            </>
-          )}
-        </section>
-      </section>
       </>
       ) : null}
 
@@ -3020,6 +2936,7 @@ type EventCapturePanelProps = {
   homeTeam: string;
   awayTeam: string;
   players: PlayerSlot[];
+  plays: PlayDefinition[];
   eventRequiredAfterPause: boolean;
   onChange: (patch: Partial<StructuredEventForm>) => void;
   onSubmit: () => void;
@@ -3393,23 +3310,31 @@ function EventLog({ events, title, description, teamName, onDelete, onReset }: E
 }
 
 const EVENT_TYPE_OPTIONS: Array<{ value: Exclude<StructuredEventType, "">; label: string }> = [
-  { value: "pass", label: "Pass" },
+  { value: "completed-pass", label: "Completed pass" },
+  { value: "failed-pass", label: "Failed pass" },
   { value: "dribble", label: "Dribble / carry" },
   { value: "shot", label: "Shot" },
-  { value: "engagement", label: "Engagement / duel" },
   { value: "turnover", label: "Turnover" },
+  { value: "engagement", label: "Engagement / duel" },
+  { value: "set-piece", label: "Set piece" },
+  { value: "substitution", label: "Substitution" },
   { value: "note", label: "Other / note" },
 ];
 
-const COMMON_EVENT_TYPES: Array<Exclude<StructuredEventType, "" | "note">> = [
-  "pass",
+const COMMON_EVENT_TYPES: Array<Exclude<StructuredEventType, "" | "note" | "substitution" | "set-piece">> = [
+  "completed-pass",
+  "failed-pass",
   "dribble",
   "shot",
   "turnover",
   "engagement",
 ];
 
-const UNCOMMON_EVENT_TYPES: Array<Exclude<StructuredEventType, "">> = ["note"];
+const UNCOMMON_EVENT_TYPES: Array<Exclude<StructuredEventType, "">> = ["set-piece", "substitution", "note"];
+
+function isCommonEventType(value: Exclude<StructuredEventType, "">): value is (typeof COMMON_EVENT_TYPES)[number] {
+  return (COMMON_EVENT_TYPES as Array<Exclude<StructuredEventType, "">>).includes(value);
+}
 
 const FIELD_DEPTH_OPTIONS = [
   { value: "own goal-line", label: "Own goal-line" },
@@ -3430,13 +3355,15 @@ const FIELD_LANE_OPTIONS = [
 ];
 
 const OUTCOME_OPTIONS: Record<Exclude<StructuredEventType, "">, Array<{ value: string; label: string }>> = {
-  pass: [
+  "completed-pass": [
     { value: "completed", label: "Completed" },
-    { value: "misplaced", label: "Misplaced" },
-    { value: "turnover", label: "Turnover" },
     { value: "key-pass", label: "Key pass / big chance" },
     { value: "shot-assist", label: "Led to shot" },
     { value: "assist", label: "Assist" },
+  ],
+  "failed-pass": [
+    { value: "misplaced", label: "Misplaced" },
+    { value: "turnover", label: "Turnover" },
   ],
   dribble: [
     { value: "successful", label: "Successful" },
@@ -3470,6 +3397,14 @@ const OUTCOME_OPTIONS: Record<Exclude<StructuredEventType, "">, Array<{ value: s
     { value: "2on1", label: "2-on-1" },
     { value: "other", label: "Other" },
   ],
+  "set-piece": [
+    { value: "retained", label: "Retained possession" },
+    { value: "shot", label: "Led to shot" },
+    { value: "goal", label: "Led to goal" },
+    { value: "turnover", label: "Turnover" },
+    { value: "out", label: "Out of play" },
+  ],
+  substitution: [{ value: "substitution", label: "Substitution" }],
   note: [{ value: "note", label: "Note only" }],
 };
 
@@ -3674,19 +3609,23 @@ function EventCapturePanel({
   homeTeam,
   awayTeam,
   players,
+  plays,
   eventRequiredAfterPause,
   onChange,
   onSubmit,
 }: EventCapturePanelProps) {
   const [showCourtMap, setShowCourtMap] = useState(false);
   const [showUncommonEvents, setShowUncommonEvents] = useState(false);
-  const teamPlayers = players.filter((player) => player.team === form.team);
-  const opponentPlayers = players.filter((player) => player.team !== form.team);
+  const teamRoster = players.filter((player) => player.team === form.team);
+  const teamPlayers = teamRoster.filter((player) => player.active !== false);
+  const substitutePlayers = teamRoster.filter((player) => player.active === false);
+  const opponentPlayers = players.filter((player) => player.team !== form.team && player.active !== false);
   const outcomeOptions = form.type ? OUTCOME_OPTIONS[form.type] : [];
-  const needsReceiver = form.type === "pass" || form.type === "shot";
+  const needsReceiver = form.type === "completed-pass" || form.type === "shot" || form.type === "substitution";
   const needsOpponent =
     form.type === "shot" && ["saved", "blocked"].includes(form.outcome);
-  const showDirection = form.type === "pass" || form.type === "dribble";
+  const showDirection = form.type === "completed-pass" || form.type === "failed-pass" || form.type === "dribble";
+  const setPiecePlays = plays.filter((play) => play.active);
 
   return (
     <section className="panel event-capture-panel" aria-labelledby="event-capture-title">
@@ -3704,7 +3643,7 @@ function EventCapturePanel({
         </p>
       ) : null}
       <div className="quick-event-grid">
-        {EVENT_TYPE_OPTIONS.filter((option) => COMMON_EVENT_TYPES.includes(option.value as Exclude<StructuredEventType, "" | "note">)).map((option) => (
+        {EVENT_TYPE_OPTIONS.filter((option) => isCommonEventType(option.value)).map((option) => (
           <button
             type="button"
             className={form.type === option.value ? "quick-event-button active" : "quick-event-button"}
@@ -3713,10 +3652,12 @@ function EventCapturePanel({
               onChange({
                 type: option.value,
                 outcome: OUTCOME_OPTIONS[option.value][0].value,
+                eventSource: option.value === "set-piece" ? "set-piece" : "open-play",
                 primaryPlayerId: "",
                 secondaryPlayerId: "",
                 opponentPlayerId: "",
                 direction: "",
+                advancedTags: [],
               })
             }
           >
@@ -3739,10 +3680,12 @@ function EventCapturePanel({
                 onChange({
                   type: option.value,
                   outcome: OUTCOME_OPTIONS[option.value][0].value,
+                  eventSource: option.value === "set-piece" ? "set-piece" : "open-play",
                   primaryPlayerId: "",
                   secondaryPlayerId: "",
                   opponentPlayerId: "",
                   direction: "",
+                  advancedTags: [],
                 })
               }
             >
@@ -3768,10 +3711,12 @@ function EventCapturePanel({
               onChange({
                 type: nextType,
                 outcome: OUTCOME_OPTIONS[nextType][0].value,
+                eventSource: nextType === "set-piece" ? "set-piece" : "open-play",
                 primaryPlayerId: "",
                 secondaryPlayerId: "",
                 opponentPlayerId: "",
                 direction: "",
+                advancedTags: [],
               });
             }}
           >
@@ -3874,6 +3819,34 @@ function EventCapturePanel({
             </select>
           </label>
         ) : null}
+        {form.eventSource === "set-piece" ? (
+          <label>
+            Play run
+            <select value={form.sourcePlayId} onChange={(event) => onChange({ sourcePlayId: event.target.value })}>
+              <option value="">No play tagged</option>
+              {setPiecePlays.map((play) => (
+                <option value={play.id} key={play.id}>
+                  {play.type} - {play.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        {form.eventSource === "set-piece" ? (
+          <label>
+            Set-piece rating
+            <select
+              value={form.sourceSetPieceRating}
+              onChange={(event) => onChange({ sourceSetPieceRating: Number(event.target.value) })}
+            >
+              {[1, 2, 3, 4, 5].map((rating) => (
+                <option value={rating} key={rating}>
+                  {rating}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       {form.type !== "note" ? (
@@ -3881,7 +3854,11 @@ function EventCapturePanel({
           <p className="section-kicker">Player involvement</p>
           <div className="event-step-grid">
           <label>
-            Primary player
+            {form.type === "substitution"
+              ? "Player leaving"
+              : form.type === "set-piece"
+                ? "Set-piece taker"
+                : "Primary player"}
             <select value={form.primaryPlayerId} onChange={(event) => onChange({ primaryPlayerId: event.target.value })}>
               <option value="">Select player</option>
               {teamPlayers.map((player) => (
@@ -3893,13 +3870,17 @@ function EventCapturePanel({
           </label>
           {needsReceiver ? (
             <label>
-              {form.type === "pass" ? "Receiving player" : "Assisting player (optional)"}
+              {form.type === "completed-pass"
+                ? "Receiving player"
+                : form.type === "substitution"
+                  ? "Player entering"
+                  : "Assisting player (optional)"}
               <select
                 value={form.secondaryPlayerId}
                 onChange={(event) => onChange({ secondaryPlayerId: event.target.value })}
               >
-                <option value="">None / unknown</option>
-                {teamPlayers.map((player) => (
+                <option value="">{form.type === "substitution" ? "Select substitute" : "None / unknown"}</option>
+                {(form.type === "substitution" ? substitutePlayers : teamPlayers).map((player) => (
                   <option value={player.id} key={player.id}>
                     {playerOptionLabel(player)}
                   </option>
@@ -3945,6 +3926,30 @@ function EventCapturePanel({
           placeholder="Example: turnover from unsuccessful pass, Bart to Lola, pressure by Opp C..."
         />
       </label>
+      <div className="advanced-chip-panel">
+        <p className="section-kicker">Optional advanced details</p>
+        <div className="tag-grid">
+          {ADVANCED_STATS.map((tag) => {
+            const active = form.advancedTags.includes(tag);
+            return (
+              <button
+                type="button"
+                className={active ? "tag-button active" : "tag-button"}
+                key={tag}
+                onClick={() =>
+                  onChange({
+                    advancedTags: active
+                      ? form.advancedTags.filter((value) => value !== tag)
+                      : [...form.advancedTags, tag],
+                  })
+                }
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="action-row">
         <button type="button" className="primary-action" onClick={onSubmit}>

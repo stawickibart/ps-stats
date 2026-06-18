@@ -1077,6 +1077,12 @@ td:first-child {
   font-weight: 800;
 }
 
+.tag-button.active {
+  border-color: var(--primary);
+  background: #e9f0ff;
+  color: var(--primary-dark);
+}
+
 .section-heading-row {
   display: flex;
   gap: 1rem;

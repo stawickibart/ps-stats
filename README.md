@@ -72,6 +72,9 @@ npm test
 1. If you rewind into already-tagged possession time and choose a different possession or player context, confirm the override before later possession tags are trimmed and replaced.
 1. In the event form, choose what happened first: pass, dribble/carry, shot, engagement/duel, turnover, or note.
 1. Common event types are shown immediately. Less-common/advanced event types, such as note-only events, are available behind **Show uncommon / advanced event types**.
+1. Set-piece type, set-piece rating, and the team play run are captured as details inside the event form when the event source is set piece.
+1. Advanced observations are optional chips inside the event form rather than a separate tagging panel.
+1. Substitution is an event template available from uncommon/advanced event types and is only valid while the ball is out of play.
 1. Fill in the dynamic details requested for that event, such as passer/receiver, shooter/assistant, defender, direction, outcome, start/end court area using the visual court map, and whether it came from open play or a set piece.
 1. Click **Record event**. Before resuming after a pause, log at least one event and then choose a fresh time-tracking state.
 1. Use the play tagging panel to record which offensive or defensive play a team is running.
